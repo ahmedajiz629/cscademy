@@ -8,8 +8,11 @@
  * @module
  */
 
-import type * as problems from "../problems.js";
-import type * as submissions from "../submissions.js";
+import type * as csacademyAccounts from "../csacademyAccounts.js";
+import type * as scores from "../scores.js";
+import type * as trackProblems from "../trackProblems.js";
+import type * as tracks from "../tracks.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -18,8 +21,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  problems: typeof problems;
-  submissions: typeof submissions;
+  csacademyAccounts: typeof csacademyAccounts;
+  scores: typeof scores;
+  trackProblems: typeof trackProblems;
+  tracks: typeof tracks;
+  users: typeof users;
 }>;
 
 /**

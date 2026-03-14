@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "CS Academy Proxy",
-  description: "Execute, test, and submit code on CSAcademy",
+  title: "CSCademy Platform",
+  description: "Programming test platform",
 };
 
 export default function RootLayout({

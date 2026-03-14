@@ -1,11 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCode, ensureSession, isWebSocketConnected } from "@/lib/csacademy";
+import { getAuthUser } from "@/lib/auth";
+import { getConvexClient } from "@/lib/convex-server";
+import { csaManager } from "@/lib/csacademy-manager";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 
 export async function POST(req: NextRequest) {
   try {
-    console.log("[API/run] POST — run request received");
-    await ensureSession();
-    console.log(`[API/run] Session ready, WebSocket: ${isWebSocketConnected() ? "connected" : "DISCONNECTED"}`);
+    const auth = await getAuthUser(req);
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Look up user's linked CSAcademy account
+    const convex = getConvexClient();
+    const csaAccount = await convex.query(api.csacademyAccounts.getByUserId, {
+      userId: auth.userId as Id<"users">,
+    });
+    if (!csaAccount) {
+      return NextResponse.json(
+        { error: "No CSAcademy account linked. Contact your administrator." },
+        { status: 400 }
+      );
+    }
 
     const body = await req.json();
     const {
@@ -23,7 +40,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await runCode(
+    const result = await csaManager.runCode(
+      csaAccount.csaEmail,
+      csaAccount.csaPassword,
       Number(contestTaskId),
       sourceCode,
       input,
