@@ -242,8 +242,16 @@ export class CSAcademySession {
     this.csrfToken = updatedCsrf;
     this.loggedIn = true;
 
+    if (!this.workspaceId) {
+      console.error(this.tag("WARNING: workspaceId is empty after login! Submissions will fail."));
+    }
+    if (!this.userId) {
+      console.error(this.tag("WARNING: userId is empty after login! WS channel subscription will be wrong."));
+    }
+
     console.log(this.tag(`LOGIN COMPLETE in ${((Date.now() - t0) / 1000).toFixed(1)}s — user=${this.userId} ws=${this.workspaceId}`));
-    this.connectWebSocket();
+    await this.connectWebSocket();
+    console.log(this.tag("WebSocket ready, session fully initialized"));
   }
 
   // ── Build headers ───────────────────────────────────────────
@@ -262,45 +270,70 @@ export class CSAcademySession {
 
   // ── WebSocket ───────────────────────────────────────────────
 
-  private connectWebSocket() {
-    if (this.ws && this.wsConnected) return;
+  private connectWebSocket(): Promise<void> {
+    if (this.ws && this.wsConnected) return Promise.resolve();
 
-    this.ws = new WebSocket(WS_URL, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Origin: "https://csacademy.com",
-        Cookie: this.cookies,
-      },
-    });
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.error(this.tag("WS connection timeout (15s)"));
+        reject(new Error("WebSocket connection timeout"));
+      }, 15_000);
 
-    this.ws.on("open", () => {
-      this.wsConnected = true;
-      console.log(this.tag("WS CONNECTED"));
-      if (!this.ws) return;
-      const channels = [
-        "global-events",
-        `workspacesession-${this.userId}-${this.sessionId}`,
-      ];
-      for (const ch of channels) {
-        this.ws.send(`s ${ch} ${ch.length + 2}`);
-      }
-    });
+      this.ws = new WebSocket(WS_URL, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Origin: "https://csacademy.com",
+          Cookie: this.cookies,
+        },
+      });
+
+      this.ws.on("open", () => {
+        this.wsConnected = true;
+        clearTimeout(timeout);
+        console.log(this.tag("WS CONNECTED"));
+        if (!this.ws) { resolve(); return; }
+        const channels = [
+          "global-events",
+          `workspacesession-${this.userId}-${this.sessionId}`,
+        ];
+        for (const ch of channels) {
+          this.ws.send(`s ${ch} ${ch.length + 2}`);
+        }
+        resolve();
+      });
 
     this.ws.on("message", (data: WebSocket.Data) => {
       const msg = data.toString();
-      if (!msg.startsWith("m ")) return;
+
+      // Log non-data messages (heartbeats, subscription confirmations)
+      if (!msg.startsWith("m ")) {
+        if (msg.length < 200) {
+          console.log(this.tag("WS msg: " + msg.substring(0, 100)));
+        }
+        return;
+      }
+
       try {
         const jsonStart = msg.indexOf("{");
         if (jsonStart === -1) return;
         const parsed = JSON.parse(msg.substring(jsonStart));
 
+        const objType = parsed.objectType || "?";
+        const objId = String(parsed.objectId || "?");
+        const msgType = parsed.type || "?";
+        console.log(this.tag(`WS << ${objType}/${msgType} id=${objId}`));
+
         // Custom run results
         if (parsed.objectType === "customrun" && parsed.objectId) {
-          const id = parsed.objectId;
+          const id = String(parsed.objectId);
           if (parsed.type === "runResults") {
+            console.log(this.tag(`RUN RESULT id=${id}`));
             this.resultsCache[id] = parsed.data;
           } else if (parsed.type === "compile_status") {
-            if (!parsed.data?.compileOK) {
+            if (parsed.data?.compileOK) {
+              console.log(this.tag(`Compile OK id=${id}`));
+            } else {
+              console.log(this.tag(`COMPILE ERROR id=${id}`));
               this.resultsCache[id] = {
                 error: parsed.data?.compilerMessage || "Compilation failed",
               };
@@ -310,32 +343,55 @@ export class CSAcademySession {
 
         // Eval job results
         if (parsed.objectType === "evaljob" && parsed.objectId) {
-          const id = parsed.objectId;
+          const id = String(parsed.objectId);
           if (!this.resultsCache[id]) {
             this.resultsCache[id] = { tests: [], status: "pending" };
           }
           if (parsed.type === "test_results") {
             const tests = parsed.data?.tests || {};
+            const count = Object.keys(tests).length;
             for (const [, tdata] of Object.entries(tests)) {
               this.resultsCache[id].tests.push(tdata);
             }
+            console.log(this.tag(`+${count} test results for job ${id} (total: ${this.resultsCache[id].tests.length})`));
           } else if (parsed.type === "finished" || parsed.type === "done") {
             this.resultsCache[id].status = "done";
             if (parsed.data) Object.assign(this.resultsCache[id], parsed.data);
+            console.log(this.tag(`JOB FINISHED id=${id} score=${this.resultsCache[id].score ?? "?"}`));
           }
         }
-      } catch { /* ignore parse error */ }
+      } catch (e: any) {
+        console.error(this.tag("WS parse error: " + e.message));
+        console.error(this.tag("WS raw: " + msg.substring(0, 200)));
+      }
     });
 
-    this.ws.on("close", () => {
-      this.wsConnected = false;
-      console.log(this.tag("WS disconnected, reconnecting in 2s..."));
-      setTimeout(() => this.connectWebSocket(), 2000);
-    });
+      this.ws.on("close", () => {
+        this.wsConnected = false;
+        console.log(this.tag("WS disconnected, reconnecting in 2s..."));
+        setTimeout(() => this.reconnectWebSocket(), 2000);
+      });
 
-    this.ws.on("error", (err: Error) => {
-      console.error(this.tag("WS error: " + err.message));
+      this.ws.on("error", (err: Error) => {
+        clearTimeout(timeout);
+        console.error(this.tag("WS error: " + err.message));
+        reject(err);
+      });
     });
+  }
+
+  /** Reconnect without returning a promise (fire-and-forget for auto-reconnect) */
+  private reconnectWebSocket() {
+    this.connectWebSocket().catch((err) => {
+      console.error(this.tag("WS reconnect failed: " + err.message));
+    });
+  }
+
+  /** Wait until WebSocket is connected (reconnect if needed) */
+  private async ensureWsConnected(): Promise<void> {
+    if (this.wsConnected) return;
+    console.log(this.tag("WS not connected, reconnecting..."));
+    await this.connectWebSocket();
   }
 
   // ── Run code ────────────────────────────────────────────────
@@ -348,6 +404,12 @@ export class CSAcademySession {
     programmingLanguageId = "1"
   ): Promise<any> {
     await this.ensureLoggedIn();
+    await this.ensureWsConnected();
+
+    if (!this.workspaceId) {
+      throw new Error("No workspaceId — login may have failed silently");
+    }
+    console.log(this.tag(`RUN contestTaskId=${contestTaskId} wsId=${this.workspaceId} sessId=${this.sessionId}`));
 
     const form = new URLSearchParams({
       workspaceId: this.workspaceId,
@@ -374,6 +436,10 @@ export class CSAcademySession {
     }
 
     const data = await res.json();
+    console.log(this.tag(`custom_run response: ${JSON.stringify(data)}`));
+    if (data.error) {
+      throw new Error(`CSAcademy run error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
     return this.pollCache(data.customRunId, 60_000);
   }
 
@@ -386,6 +452,12 @@ export class CSAcademySession {
     programmingLanguageId = "1"
   ): Promise<any> {
     await this.ensureLoggedIn();
+    await this.ensureWsConnected();
+
+    if (!this.workspaceId) {
+      throw new Error("No workspaceId — login may have failed silently");
+    }
+    console.log(this.tag(`SUBMIT contestTaskId=${contestTaskId} wsId=${this.workspaceId} sessId=${this.sessionId}`));
 
     const form = new URLSearchParams({
       workspaceId: this.workspaceId,
@@ -411,6 +483,10 @@ export class CSAcademySession {
     }
 
     const data = await res.json();
+    console.log(this.tag(`evaljob response: ${JSON.stringify(data)}`));
+    if (data.error) {
+      throw new Error(`CSAcademy submit error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
     const result = await this.pollCache(data.evalJobId, 120_000);
 
     // Convert score from 0.0-1.0 → 0-100
@@ -428,20 +504,33 @@ export class CSAcademySession {
 
   // ── Poll cache ──────────────────────────────────────────────
 
-  private pollCache(id: string, timeoutMs: number): Promise<any> {
+  private pollCache(id: string | number, timeoutMs: number): Promise<any> {
+    const key = String(id);
+    console.log(this.tag(`pollCache waiting for key="${key}" timeout=${timeoutMs / 1000}s`));
     return new Promise((resolve, reject) => {
       const start = Date.now();
+      let dotCount = 0;
       const iv = setInterval(() => {
-        if (id in this.resultsCache) {
-          const data = this.resultsCache[id];
-          if (data.status === "pending") return;
+        if (key in this.resultsCache) {
+          const data = this.resultsCache[key];
+          if (data.status === "pending") {
+            dotCount++;
+            if (dotCount % 10 === 0) {
+              console.log(this.tag(`  Waiting for ${key}... ${((Date.now() - start) / 1000).toFixed(0)}s (${data.tests?.length || 0} tests so far)`));
+            }
+            return;
+          }
+          const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+          console.log(this.tag(`  Result ready for ${key} in ${elapsed}s`));
           clearInterval(iv);
-          delete this.resultsCache[id];
+          delete this.resultsCache[key];
           resolve(data);
         }
         if (Date.now() - start > timeoutMs) {
+          console.error(this.tag(`TIMEOUT waiting for ${key} (${(timeoutMs / 1000).toFixed(0)}s). WS=${this.wsConnected}`));
+          console.error(this.tag(`  Cache keys: [${Object.keys(this.resultsCache).join(", ")}]`));
           clearInterval(iv);
-          reject(new Error(`Timeout waiting for ${id} (${(timeoutMs / 1000).toFixed(0)}s). WS=${this.wsConnected}`));
+          reject(new Error(`Timeout waiting for ${key} (${(timeoutMs / 1000).toFixed(0)}s). WS=${this.wsConnected}`));
         }
       }, 500);
     });

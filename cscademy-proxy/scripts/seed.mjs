@@ -62,26 +62,26 @@ async function seed() {
       {
         name: "Addition",
         slug: "addition",
-        contestTaskId: 1,
+        contestTaskId: 38,
         description:
-          "Read two integers A and B from standard input and print their sum.\n\nConstraints:\n- 1 ≤ A, B ≤ 1000",
+          "Given two integers a and b, output their sum.",
         points: 100,
         order: 1,
-        sampleInput: "3 5",
-        sampleOutput: "8",
+        sampleInput: "1 2",
+        sampleOutput: "3",
         referer: "https://csacademy.com/contest/archive/task/addition/",
       },
       {
         name: "One Letter",
         slug: "one-letter",
-        contestTaskId: 29,
+        contestTaskId: 680,
         description:
-          "Given two strings of equal length, determine the minimum number of character changes needed to transform one into the other.",
+          "You are given a list of N words. From each word you should keep only one letter and discard all the others. Then you should permute the N chosen letters and build a single word by concatenating them. Find the lexicographically smallest word you can obtain.",
         points: 100,
         order: 2,
-        sampleInput: "abc\nadc",
-        sampleOutput: "1",
-        referer: "https://csacademy.com/contest/archive/task/one-letter/",
+        sampleInput: "3\nabc\nbcd\ncde",
+        sampleOutput: "abc",
+        referer: "https://csacademy.com/contest/interview-archive/task/one_letter/",
       },
     ];
 
