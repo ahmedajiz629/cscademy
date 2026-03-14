@@ -128,10 +128,15 @@ export default function Home() {
       const data = await res.json();
       if (data.loggedIn) {
         setLoginStatus("logged-in");
-        setStatusMessage(`Connected (User: ${data.session?.userId || "?"})`);
+        const ws = data.wsConnected ? "WS: connected" : "WS: disconnected";
+        setStatusMessage(
+          `User: ${data.session?.userId || "?"} | Workspace: ${data.session?.workspaceId || "?"} | Session: ${data.session?.sessionId || "?"} | ${ws}`
+        );
+      } else {
+        setStatusMessage("Not connected");
       }
     } catch {
-      // Not logged in yet
+      setStatusMessage("Server unreachable");
     }
   }
 
@@ -147,12 +152,13 @@ export default function Home() {
       const data = await res.json();
       if (data.success) {
         setLoginStatus("logged-in");
+        const ws = data.wsConnected ? "WS: connected" : "WS: connecting...";
         setStatusMessage(
-          `Connected (User: ${data.userId || "?"}, WS: ${data.workspaceId || "?"})`
+          `User: ${data.userId || "?"} | Workspace: ${data.workspaceId || "?"} | Session: ${data.sessionId || "?"} | ${ws}`
         );
       } else {
         setLoginStatus("error");
-        setStatusMessage(data.error || "Login failed");
+        setStatusMessage(`Error: ${data.error || "Login failed"}`);
       }
     } catch (err: any) {
       setLoginStatus("error");

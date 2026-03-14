@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCode, isLoggedIn, login } from "@/lib/csacademy";
+import { runCode, ensureSession, isWebSocketConnected } from "@/lib/csacademy";
 
 export async function POST(req: NextRequest) {
   try {
-    // Auto-login if not logged in
-    if (!isLoggedIn()) {
-      const email = process.env.CSACADEMY_EMAIL;
-      const password = process.env.CSACADEMY_PASSWORD;
-      if (!email || !password) {
-        return NextResponse.json(
-          { error: "Not logged in. Call /api/csacademy/login first or set env vars." },
-          { status: 401 }
-        );
-      }
-      await login(email, password);
-    }
+    console.log("[API/run] POST — run request received");
+    await ensureSession();
+    console.log(`[API/run] Session ready, WebSocket: ${isWebSocketConnected() ? "connected" : "DISCONNECTED"}`);
 
     const body = await req.json();
     const {
