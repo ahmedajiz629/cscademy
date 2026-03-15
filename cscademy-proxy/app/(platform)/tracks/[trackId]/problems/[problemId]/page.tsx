@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { getTrack, getProblem } from "@/lib/tracks";
 import OutputPanel from "@/components/OutputPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
@@ -20,35 +18,30 @@ const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
 
 export default function ProblemIDEPage() {
   const params = useParams();
-  const router = useRouter();
   const trackId = params.trackId as string;
   const problemId = params.problemId as string;
 
-  const problem = useQuery(api.trackProblems.getById, {
-    id: problemId as Id<"trackProblems">,
-  });
-  const track = useQuery(api.tracks.getById, {
-    id: trackId as Id<"tracks">,
-  });
+  const track = getTrack(trackId);
+  const problem = getProblem(trackId, problemId);
 
+  const defaultLangId = track?.languages[0]?.id || "1";
+  const [langId, setLangId] = useState(defaultLangId);
   const [code, setCode] = useState("");
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
+  const [testResults, setTestResults] = useState<any[] | null>(null);
   const [isError, setIsError] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [score, setScore] = useState<number | null>(null);
 
-  // Initialize code with starter code
+  // Initialize code with starter code for selected language
   useEffect(() => {
-    if (problem?.starterCode && !code) {
-      setCode(problem.starterCode);
-    } else if (!code) {
-      setCode(
-        '#include <iostream>\nusing namespace std;\n\nint main() {\n    \n    return 0;\n}\n'
-      );
+    if (problem) {
+      const starter = problem.starterCode[langId] || problem.starterCode[defaultLangId] || "";
+      setCode(starter);
     }
-  }, [problem, code]);
+  }, [problem, langId, defaultLangId]);
 
   // Initialize input with sample
   useEffect(() => {
@@ -57,25 +50,27 @@ export default function ProblemIDEPage() {
     }
   }, [problem, input]);
 
+  const currentLang = track?.languages.find((l) => l.id === langId);
+  const codemirrorLang = currentLang?.codemirrorLang || "cpp";
+
   const runCode = useCallback(async () => {
-    if (!problem) return;
+    if (!problem || !track) return;
     setIsRunning(true);
     setOutput("");
+    setTestResults(null);
     setIsError(false);
     setScore(null);
 
     try {
-      const referer =
-        problem.referer ||
-        `https://csacademy.com/contest/archive/task/${problem.slug}/`;
-      const res = await fetch("/api/csacademy/run", {
+      const res = await fetch(track.runEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contestTaskId: problem.contestTaskId,
           sourceCode: code,
           input,
-          referer,
+          referer: problem.referer || "",
+          programmingLanguageId: langId,
         }),
       });
 
@@ -101,28 +96,27 @@ export default function ProblemIDEPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [problem, code, input]);
+  }, [problem, track, code, input, langId]);
 
   const submitCode = useCallback(async () => {
-    if (!problem) return;
+    if (!problem || !track) return;
     setIsSubmitting(true);
     setOutput("");
+    setTestResults(null);
     setIsError(false);
     setScore(null);
 
     try {
-      const referer =
-        problem.referer ||
-        `https://csacademy.com/contest/archive/task/${problem.slug}/`;
-      const res = await fetch("/api/csacademy/submit", {
+      const res = await fetch(track.submitEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contestTaskId: problem.contestTaskId,
           sourceCode: code,
-          referer,
-          trackId,
-          problemId,
+          referer: problem.referer || "",
+          programmingLanguageId: langId,
+          trackSlug: trackId,
+          problemSlug: problemId,
         }),
       });
 
@@ -138,24 +132,17 @@ export default function ProblemIDEPage() {
             : null;
         setScore(sc);
 
-        // Build output
+        // Store test results for the test case table
+        if (results.tests && Array.isArray(results.tests)) {
+          setTestResults(results.tests);
+        }
+
+        // Build summary output
         const lines: string[] = [];
         if (sc !== null) lines.push(`Score: ${sc.toFixed(0)}/100`);
         if (results.tests && Array.isArray(results.tests)) {
-          lines.push(`Tests: ${results.tests.length}`);
-          results.tests.forEach((t: any, i: number) => {
-            const verdict =
-              t.checkerScore === 1
-                ? "✓ PASS"
-                : t.checkerScore === 0
-                  ? "✗ FAIL"
-                  : `~ ${(t.checkerScore * 100).toFixed(0)}%`;
-            const time = t.time ? ` (${t.time}ms)` : "";
-            const mem = t.maxMemory
-              ? ` [${(t.maxMemory / 1024).toFixed(0)}KB]`
-              : "";
-            lines.push(`  Test ${i + 1}: ${verdict}${time}${mem}`);
-          });
+          const passed = results.tests.filter((t: any) => t.checkerScore === 1).length;
+          lines.push(`Tests: ${passed}/${results.tests.length} passed`);
         }
         setOutput(lines.join("\n") || "Submitted successfully");
       }
@@ -165,12 +152,12 @@ export default function ProblemIDEPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [problem, code, trackId, problemId]);
+  }, [problem, track, code, trackId, problemId, langId]);
 
   if (!problem || !track) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="text-gray-400">Loading problem...</div>
+        <div className="text-gray-400">Problem not found.</div>
       </div>
     );
   }
@@ -191,6 +178,18 @@ export default function ProblemIDEPage() {
           <span className="text-gray-500 text-xs">{problem.points} pts</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Language selector */}
+          <select
+            value={langId}
+            onChange={(e) => setLangId(e.target.value)}
+            className="px-2 py-1.5 text-sm bg-gray-800 border border-gray-700 text-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {track.languages.map((lang) => (
+              <option key={lang.id} value={lang.id}>
+                {lang.name}
+              </option>
+            ))}
+          </select>
           <button
             onClick={runCode}
             disabled={isRunning || isSubmitting}
@@ -246,7 +245,7 @@ export default function ProblemIDEPage() {
         {/* Middle: Editor */}
         <div className="flex-1 flex flex-col">
           <div className="flex-1 overflow-hidden">
-            <CodeEditor value={code} onChange={setCode} />
+            <CodeEditor value={code} onChange={setCode} language={codemirrorLang} />
           </div>
 
           {/* Input */}
@@ -265,8 +264,8 @@ export default function ProblemIDEPage() {
           </div>
         </div>
 
-        {/* Right: Output */}
-        <div className="w-72 border-l border-gray-800 flex flex-col">
+        {/* Right: Output + Test Cases */}
+        <div className="w-80 border-l border-gray-800 flex flex-col">
           <OutputPanel
             output={output}
             isError={isError}
@@ -275,6 +274,7 @@ export default function ProblemIDEPage() {
               isRunning ? "Running code..." : "Evaluating submission..."
             }
             score={score}
+            testResults={testResults}
           />
         </div>
       </div>

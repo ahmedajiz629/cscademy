@@ -48,12 +48,12 @@ export async function POST(req: NextRequest) {
     );
 
     // Record score if available
-    if (body.problemId && body.trackId && result?.score !== undefined) {
+    if (body.problemSlug && body.trackSlug && result?.score !== undefined) {
       try {
         await convex.mutation(api.scores.upsert, {
           userId: auth.userId as Id<"users">,
-          trackId: body.trackId as Id<"tracks">,
-          problemId: body.problemId as Id<"trackProblems">,
+          trackSlug: body.trackSlug,
+          problemSlug: body.problemSlug,
           score: result.score,
         });
       } catch (e: any) {

@@ -10,8 +10,6 @@
 
 import type * as csacademyAccounts from "../csacademyAccounts.js";
 import type * as scores from "../scores.js";
-import type * as trackProblems from "../trackProblems.js";
-import type * as tracks from "../tracks.js";
 import type * as users from "../users.js";
 
 import type {
@@ -23,8 +21,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   csacademyAccounts: typeof csacademyAccounts;
   scores: typeof scores;
-  trackProblems: typeof trackProblems;
-  tracks: typeof tracks;
   users: typeof users;
 }>;
 

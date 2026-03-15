@@ -1,16 +1,22 @@
 "use client";
 
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 
-// Lazy-load CodeMirror (it's a large library)
 let CodeMirrorComponent: any = null;
-let cppLang: any = null;
 let oneDarkTheme: any = null;
+
+// Language extension loaders
+const langLoaders: Record<string, () => Promise<any>> = {
+  cpp: () => import("@codemirror/lang-cpp").then((m) => m.cpp()),
+  java: () => import("@codemirror/lang-java").then((m) => m.java()),
+  python: () => import("@codemirror/lang-python").then((m) => m.python()),
+  javascript: () => import("@codemirror/lang-javascript").then((m) => m.javascript()),
+};
 
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
-  language?: string;
+  language?: string; // "cpp" | "java" | "python" | "javascript"
 }
 
 export default function CodeEditor({
@@ -21,20 +27,28 @@ export default function CodeEditor({
   const [loaded, setLoaded] = useState(false);
   const [extensions, setExtensions] = useState<any[]>([]);
 
+  // Load CodeMirror core + theme once
   useEffect(() => {
-    // Dynamic import to avoid SSR issues
+    if (CodeMirrorComponent) {
+      setLoaded(true);
+      return;
+    }
     Promise.all([
       import("@uiw/react-codemirror"),
-      import("@codemirror/lang-cpp"),
       import("@codemirror/theme-one-dark"),
-    ]).then(([cm, cpp, theme]) => {
+    ]).then(([cm, theme]) => {
       CodeMirrorComponent = cm.default;
-      cppLang = cpp.cpp;
       oneDarkTheme = theme.oneDark;
-      setExtensions([cppLang()]);
       setLoaded(true);
     });
   }, []);
+
+  // Load language extension when language prop changes
+  useEffect(() => {
+    if (!loaded) return;
+    const loader = langLoaders[language] || langLoaders.cpp;
+    loader().then((ext) => setExtensions([ext]));
+  }, [loaded, language]);
 
   const handleChange = useCallback(
     (val: string) => {

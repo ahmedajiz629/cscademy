@@ -1,5 +1,6 @@
 /**
- * Seed script — creates initial admin user + sample track with problems.
+ * Seed script — creates initial admin + student users.
+ * Tracks and problems are defined as code modules in lib/tracks/.
  * Run with: node scripts/seed.mjs
  */
 import { ConvexHttpClient } from "convex/browser";
@@ -23,7 +24,7 @@ async function seed() {
     });
     console.log("✓ Admin user created:", adminId);
 
-    // Link CSAcademy account to admin (optional - for testing)
+    // Link CSAcademy account to admin (for testing)
     await client.mutation("csacademyAccounts:upsert", {
       userId: adminId,
       csaEmail: "binoz.daop@gmail.com",
@@ -48,57 +49,10 @@ async function seed() {
     console.log("Student user might already exist:", e.message);
   }
 
-  // 3. Create a sample track
-  try {
-    const trackId = await client.mutation("tracks:create", {
-      name: "Introduction to Programming",
-      description: "Basic programming exercises to get started with C++",
-      order: 1,
-    });
-    console.log("✓ Track created:", trackId);
-
-    // 4. Add sample problems
-    const problems = [
-      {
-        name: "Addition",
-        slug: "addition",
-        contestTaskId: 38,
-        description:
-          "Given two integers a and b, output their sum.",
-        points: 100,
-        order: 1,
-        sampleInput: "1 2",
-        sampleOutput: "3",
-        referer: "https://csacademy.com/contest/archive/task/addition/",
-      },
-      {
-        name: "One Letter",
-        slug: "one-letter",
-        contestTaskId: 680,
-        description:
-          "You are given a list of N words. From each word you should keep only one letter and discard all the others. Then you should permute the N chosen letters and build a single word by concatenating them. Find the lexicographically smallest word you can obtain.",
-        points: 100,
-        order: 2,
-        sampleInput: "3\nabc\nbcd\ncde",
-        sampleOutput: "abc",
-        referer: "https://csacademy.com/contest/interview-archive/task/one_letter/",
-      },
-    ];
-
-    for (const p of problems) {
-      await client.mutation("trackProblems:create", {
-        trackId,
-        ...p,
-      });
-      console.log(`✓ Problem "${p.name}" created`);
-    }
-  } catch (e) {
-    console.log("Track/problems might already exist:", e.message);
-  }
-
   console.log("\n=== Seed complete ===");
   console.log("Admin login:   admin@cscademy.com / admin123");
   console.log("Student login: student@cscademy.com / student123");
+  console.log("\nTracks & problems are defined in lib/tracks/ (code modules).");
 }
 
 seed().catch(console.error);

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, notFound } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { getTrack } from "@/lib/tracks";
 
 interface User {
   id: string;
@@ -19,6 +20,8 @@ export default function TrackDetailPage() {
   const trackId = params.trackId as string;
   const [user, setUser] = useState<User | null>(null);
 
+  const track = getTrack(trackId);
+
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
@@ -26,32 +29,25 @@ export default function TrackDetailPage() {
       .catch(() => {});
   }, []);
 
-  const track = useQuery(api.tracks.getById, {
-    id: trackId as Id<"tracks">,
-  });
-  const problems = useQuery(api.trackProblems.listByTrack, {
-    trackId: trackId as Id<"tracks">,
-  });
   const scores = useQuery(
     api.scores.getByUserAndTrack,
     user?.id
-      ? {
-          userId: user.id as Id<"users">,
-          trackId: trackId as Id<"tracks">,
-        }
+      ? { userId: user.id as Id<"users">, trackSlug: trackId }
       : "skip"
   );
 
-  if (!track || !problems) {
+  if (!track) {
     return (
       <div className="p-8">
-        <div className="text-gray-400">Loading...</div>
+        <div className="text-gray-400">Track not found.</div>
       </div>
     );
   }
 
-  function getScore(problemId: string) {
-    return scores?.find((s) => s.problemId === problemId);
+  const problems = track.problems;
+
+  function getScore(problemSlug: string) {
+    return scores?.find((s) => s.problemSlug === problemSlug);
   }
 
   const totalEarned = scores?.reduce((sum, s) => sum + s.score, 0) || 0;
@@ -70,7 +66,10 @@ export default function TrackDetailPage() {
 
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">{track.name}</h1>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{track.icon}</span>
+            <h1 className="text-2xl font-bold text-white">{track.name}</h1>
+          </div>
           <p className="text-gray-400 mt-1">{track.description}</p>
         </div>
         <div className="text-right">
@@ -89,12 +88,12 @@ export default function TrackDetailPage() {
       ) : (
         <div className="space-y-2">
           {problems.map((problem, idx) => {
-            const sc = getScore(problem._id);
+            const sc = getScore(problem.id);
             const pct = sc ? (sc.score / problem.points) * 100 : 0;
             return (
               <Link
-                key={problem._id}
-                href={`/tracks/${trackId}/problems/${problem._id}`}
+                key={problem.id}
+                href={`/tracks/${trackId}/problems/${problem.id}`}
                 className="flex items-center justify-between p-4 bg-[#111127] border border-gray-800 rounded-xl hover:border-blue-500/50 transition-colors group"
               >
                 <div className="flex items-center gap-4">

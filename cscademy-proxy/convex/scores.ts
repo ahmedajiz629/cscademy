@@ -2,24 +2,24 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
 export const getByUserAndTrack = query({
-  args: { userId: v.id("users"), trackId: v.id("tracks") },
-  handler: async (ctx, { userId, trackId }) => {
+  args: { userId: v.id("users"), trackSlug: v.string() },
+  handler: async (ctx, { userId, trackSlug }) => {
     return ctx.db
       .query("scores")
       .withIndex("by_user_track", (q) =>
-        q.eq("userId", userId).eq("trackId", trackId)
+        q.eq("userId", userId).eq("trackSlug", trackSlug)
       )
       .collect();
   },
 });
 
 export const getByUserAndProblem = query({
-  args: { userId: v.id("users"), problemId: v.id("trackProblems") },
-  handler: async (ctx, { userId, problemId }) => {
+  args: { userId: v.id("users"), problemSlug: v.string() },
+  handler: async (ctx, { userId, problemSlug }) => {
     return ctx.db
       .query("scores")
       .withIndex("by_user_problem", (q) =>
-        q.eq("userId", userId).eq("problemId", problemId)
+        q.eq("userId", userId).eq("problemSlug", problemSlug)
       )
       .first();
   },
@@ -44,15 +44,15 @@ export const listAll = query({
 export const upsert = mutation({
   args: {
     userId: v.id("users"),
-    trackId: v.id("tracks"),
-    problemId: v.id("trackProblems"),
+    trackSlug: v.string(),
+    problemSlug: v.string(),
     score: v.number(),
   },
-  handler: async (ctx, { userId, trackId, problemId, score }) => {
+  handler: async (ctx, { userId, trackSlug, problemSlug, score }) => {
     const existing = await ctx.db
       .query("scores")
       .withIndex("by_user_problem", (q) =>
-        q.eq("userId", userId).eq("problemId", problemId)
+        q.eq("userId", userId).eq("problemSlug", problemSlug)
       )
       .first();
 
@@ -66,8 +66,8 @@ export const upsert = mutation({
     } else {
       return ctx.db.insert("scores", {
         userId,
-        trackId,
-        problemId,
+        trackSlug,
+        problemSlug,
         score,
         attempts: 1,
         lastAttemptAt: Date.now(),

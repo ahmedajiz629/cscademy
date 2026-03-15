@@ -19,39 +19,15 @@ export default defineSchema({
     csaPassword: v.string(),
   }).index("by_userId", ["userId"]),
 
-  // Learning tracks / test series
-  tracks: defineTable({
-    name: v.string(),
-    description: v.string(),
-    isActive: v.boolean(),
-    order: v.number(),
-    createdAt: v.number(),
-  }),
-
-  // Problems within a track
-  trackProblems: defineTable({
-    trackId: v.id("tracks"),
-    name: v.string(),
-    slug: v.string(),
-    contestTaskId: v.number(),
-    description: v.string(),
-    points: v.number(),
-    order: v.number(),
-    sampleInput: v.optional(v.string()),
-    sampleOutput: v.optional(v.string()),
-    starterCode: v.optional(v.string()),
-    referer: v.optional(v.string()),
-  }).index("by_trackId", ["trackId"]),
-
-  // User scores per problem
+  // User scores per problem (tracks & problems are code modules, referenced by slug)
   scores: defineTable({
     userId: v.id("users"),
-    trackId: v.id("tracks"),
-    problemId: v.id("trackProblems"),
+    trackSlug: v.string(),
+    problemSlug: v.string(),
     score: v.number(),
     attempts: v.number(),
     lastAttemptAt: v.number(),
   })
-    .index("by_user_track", ["userId", "trackId"])
-    .index("by_user_problem", ["userId", "problemId"]),
+    .index("by_user_track", ["userId", "trackSlug"])
+    .index("by_user_problem", ["userId", "problemSlug"]),
 });
