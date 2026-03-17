@@ -15,6 +15,7 @@ interface User {
 }
 
 const tracks = getAllTracks(true);
+const trackSlugs = tracks.map((t) => t.id);
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -72,7 +73,7 @@ export default function DashboardPage() {
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <span className="text-xs text-gray-500">
-                    {track.problems.length} problem{track.problems.length !== 1 ? "s" : ""}
+                    Problems
                   </span>
                   <span className="text-xs text-gray-500">
                     {count} solved

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, notFound } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -21,6 +21,9 @@ export default function TrackDetailPage() {
   const [user, setUser] = useState<User | null>(null);
 
   const track = getTrack(trackId);
+  const problems = useQuery(api.trackProblems.listByTrack, {
+    trackSlug: trackId,
+  });
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -44,14 +47,14 @@ export default function TrackDetailPage() {
     );
   }
 
-  const problems = track.problems;
+  const problemsList = problems || [];
 
   function getScore(problemSlug: string) {
     return scores?.find((s) => s.problemSlug === problemSlug);
   }
 
   const totalEarned = scores?.reduce((sum, s) => sum + s.score, 0) || 0;
-  const totalPossible = problems.reduce((sum, p) => sum + p.points, 0);
+  const totalPossible = problemsList.reduce((sum, p) => sum + p.points, 0);
 
   return (
     <div className="p-8">
@@ -81,19 +84,19 @@ export default function TrackDetailPage() {
         </div>
       </div>
 
-      {problems.length === 0 ? (
+      {problemsList.length === 0 ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
-          No problems in this track yet.
+          {problems === undefined ? "Loading problems..." : "No problems in this track yet."}
         </div>
       ) : (
         <div className="space-y-2">
-          {problems.map((problem, idx) => {
-            const sc = getScore(problem.id);
+          {problemsList.map((problem, idx) => {
+            const sc = getScore(problem.slug);
             const pct = sc ? (sc.score / problem.points) * 100 : 0;
             return (
               <Link
-                key={problem.id}
-                href={`/tracks/${trackId}/problems/${problem.id}`}
+                key={problem.slug}
+                href={`/tracks/${trackId}/problems/${problem.slug}`}
                 className="flex items-center justify-between p-4 bg-[#111127] border border-gray-800 rounded-xl hover:border-blue-500/50 transition-colors group"
               >
                 <div className="flex items-center gap-4">

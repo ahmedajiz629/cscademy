@@ -1,4 +1,4 @@
-import type { TrackModule, TrackProblem } from "./types";
+import type { TrackModule } from "./types";
 import algorithmics from "./algorithmics";
 
 /** All registered track modules */
@@ -22,12 +22,4 @@ export function getTrack(trackId: string): TrackModule | undefined {
   return trackMap.get(trackId);
 }
 
-/** Get a single problem by track + problem slug */
-export function getProblem(
-  trackId: string,
-  problemId: string
-): TrackProblem | undefined {
-  return trackMap.get(trackId)?.problems.find((p) => p.id === problemId);
-}
-
-export type { TrackModule, TrackProblem, Language } from "./types";
+export type { TrackModule } from "./types";

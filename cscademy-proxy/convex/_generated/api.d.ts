@@ -9,7 +9,9 @@
  */
 
 import type * as csacademyAccounts from "../csacademyAccounts.js";
+import type * as programmingLanguages from "../programmingLanguages.js";
 import type * as scores from "../scores.js";
+import type * as trackProblems from "../trackProblems.js";
 import type * as users from "../users.js";
 
 import type {
@@ -20,7 +22,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   csacademyAccounts: typeof csacademyAccounts;
+  programmingLanguages: typeof programmingLanguages;
   scores: typeof scores;
+  trackProblems: typeof trackProblems;
   users: typeof users;
 }>;
 

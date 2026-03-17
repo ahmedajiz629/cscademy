@@ -19,7 +19,33 @@ export default defineSchema({
     csaPassword: v.string(),
   }).index("by_userId", ["userId"]),
 
-  // User scores per problem (tracks & problems are code modules, referenced by slug)
+  // Problems within a track (seeded, referenced by trackSlug)
+  trackProblems: defineTable({
+    trackSlug: v.string(),
+    slug: v.string(),
+    name: v.string(),
+    description: v.string(),
+    points: v.number(),
+    order: v.number(),
+    sampleInput: v.optional(v.string()),
+    sampleOutput: v.optional(v.string()),
+    starterCode: v.optional(v.string()), // JSON Record<langId, code>
+    contestTaskId: v.optional(v.number()),
+    referer: v.optional(v.string()),
+  })
+    .index("by_trackSlug", ["trackSlug"])
+    .index("by_trackSlug_slug", ["trackSlug", "slug"]),
+
+  // Programming languages available per track (seeded from CSAcademy)
+  programmingLanguages: defineTable({
+    trackSlug: v.string(),
+    langId: v.string(),
+    name: v.string(),
+    codemirrorMode: v.string(),
+    order: v.number(),
+  }).index("by_trackSlug", ["trackSlug"]),
+
+  // User scores per problem
   scores: defineTable({
     userId: v.id("users"),
     trackSlug: v.string(),

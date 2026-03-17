@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { getTrack, getProblem } from "@/lib/tracks";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { getTrack } from "@/lib/tracks";
 import OutputPanel from "@/components/OutputPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
@@ -22,10 +24,16 @@ export default function ProblemIDEPage() {
   const problemId = params.problemId as string;
 
   const track = getTrack(trackId);
-  const problem = getProblem(trackId, problemId);
+  const problem = useQuery(api.trackProblems.getBySlug, {
+    trackSlug: trackId,
+    slug: problemId,
+  });
+  const languages = useQuery(api.programmingLanguages.listByTrack, {
+    trackSlug: trackId,
+  });
 
-  const defaultLangId = track?.languages[0]?.id || "1";
-  const [langId, setLangId] = useState(defaultLangId);
+  const defaultLangId = languages?.[0]?.langId || "1";
+  const [langId, setLangId] = useState("");
   const [code, setCode] = useState("");
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -35,13 +43,29 @@ export default function ProblemIDEPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [score, setScore] = useState<number | null>(null);
 
+  const starterCodeMap = useMemo(() => {
+    if (!problem?.starterCode) return {};
+    try {
+      return JSON.parse(problem.starterCode);
+    } catch {
+      return {};
+    }
+  }, [problem?.starterCode]);
+
+  // Set default language when languages load
+  useEffect(() => {
+    if (languages && languages.length > 0 && !langId) {
+      setLangId(languages[0].langId);
+    }
+  }, [languages, langId]);
+
   // Initialize code with starter code for selected language
   useEffect(() => {
-    if (problem) {
-      const starter = problem.starterCode[langId] || problem.starterCode[defaultLangId] || "";
+    if (problem && langId) {
+      const starter = starterCodeMap[langId] || starterCodeMap[defaultLangId] || "";
       setCode(starter);
     }
-  }, [problem, langId, defaultLangId]);
+  }, [problem, langId, defaultLangId, starterCodeMap]);
 
   // Initialize input with sample
   useEffect(() => {
@@ -50,8 +74,8 @@ export default function ProblemIDEPage() {
     }
   }, [problem, input]);
 
-  const currentLang = track?.languages.find((l) => l.id === langId);
-  const codemirrorLang = currentLang?.codemirrorLang || "cpp";
+  const currentLang = languages?.find((l) => l.langId === langId);
+  const codemirrorLang = currentLang?.codemirrorMode || "cpp";
 
   const runCode = useCallback(async () => {
     if (!problem || !track) return;
@@ -154,7 +178,17 @@ export default function ProblemIDEPage() {
     }
   }, [problem, track, code, trackId, problemId, langId]);
 
-  if (!problem || !track) {
+  if (!track || problem === undefined || languages === undefined) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-gray-400">
+          {problem === undefined ? "Loading..." : "Problem not found."}
+        </div>
+      </div>
+    );
+  }
+
+  if (!problem) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-gray-400">Problem not found.</div>
@@ -184,8 +218,8 @@ export default function ProblemIDEPage() {
             onChange={(e) => setLangId(e.target.value)}
             className="px-2 py-1.5 text-sm bg-gray-800 border border-gray-700 text-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            {track.languages.map((lang) => (
-              <option key={lang.id} value={lang.id}>
+            {(languages || []).map((lang) => (
+              <option key={lang.langId} value={lang.langId}>
                 {lang.name}
               </option>
             ))}

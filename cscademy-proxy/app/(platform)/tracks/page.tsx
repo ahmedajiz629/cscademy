@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { getAllTracks } from "@/lib/tracks";
 
 const tracks = getAllTracks(true);
@@ -29,13 +31,21 @@ export default function TracksPage() {
                 </h3>
               </div>
               <p className="text-gray-400 text-sm mt-1">{track.description}</p>
-              <p className="text-xs text-gray-500 mt-2">
-                {track.problems.length} problem{track.problems.length !== 1 ? "s" : ""}
-              </p>
+              <ProblemCount trackSlug={track.id} />
             </Link>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function ProblemCount({ trackSlug }: { trackSlug: string }) {
+  const count = useQuery(api.trackProblems.countByTrack, { trackSlug });
+  if (count === undefined) return null;
+  return (
+    <p className="text-xs text-gray-500 mt-2">
+      {count} problem{count !== 1 ? "s" : ""}
+    </p>
   );
 }

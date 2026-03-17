@@ -2,12 +2,21 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { getTrack } from "@/lib/tracks";
 
 export default function AdminTrackDetailPage() {
   const params = useParams();
   const trackId = params.trackId as string;
   const track = getTrack(trackId);
+
+  const problems = useQuery(api.trackProblems.listByTrack, {
+    trackSlug: trackId,
+  });
+  const languages = useQuery(api.programmingLanguages.listByTrack, {
+    trackSlug: trackId,
+  });
 
   if (!track) {
     return <div className="p-8 text-gray-400">Track not found.</div>;
@@ -31,15 +40,17 @@ export default function AdminTrackDetailPage() {
         </h1>
         <p className="text-sm text-gray-400 mt-1">{track.description}</p>
         <p className="text-xs text-gray-500 mt-2">
-          Languages: {track.languages.map((l) => l.name).join(", ")} &middot;
+          Languages: {languages ? languages.map((l) => l.name).join(", ") : "Loading..."} &middot;
           Run: <code className="text-gray-400">{track.runEndpoint}</code> &middot;
           Submit: <code className="text-gray-400">{track.submitEndpoint}</code>
         </p>
       </div>
 
-      {track.problems.length === 0 ? (
+      {problems === undefined ? (
+        <div className="text-gray-400">Loading problems...</div>
+      ) : problems.length === 0 ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
-          No problems defined in this track module.
+          No problems seeded for this track.
         </div>
       ) : (
         <div className="border border-gray-800 rounded-xl overflow-hidden">
@@ -64,28 +75,26 @@ export default function AdminTrackDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {track.problems
-                .sort((a, b) => a.order - b.order)
-                .map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-b border-gray-800/50 hover:bg-[#111127]/50"
-                  >
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {p.order}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-white">{p.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-400 font-mono">
-                      {p.id}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
-                      {p.contestTaskId}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">
-                      {p.points}
-                    </td>
-                  </tr>
-                ))}
+              {problems.map((p) => (
+                <tr
+                  key={p._id}
+                  className="border-b border-gray-800/50 hover:bg-[#111127]/50"
+                >
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {p.order}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-white">{p.name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400 font-mono">
+                    {p.slug}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    {p.contestTaskId}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    {p.points}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
