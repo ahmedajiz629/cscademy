@@ -1,97 +1,386 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { getTrack } from "@/lib/tracks";
+
+type Problem = {
+  _id: Id<"trackProblems">;
+  slug: string;
+  name: string;
+  description: string;
+  points: number;
+  order: number;
+  sampleInput?: string;
+  sampleOutput?: string;
+  contestTaskId?: number;
+  referer?: string;
+  starterCode?: string;
+};
+
+const EMPTY_FORM = {
+  slug: "",
+  name: "",
+  description: "",
+  points: 100,
+  order: 1,
+  sampleInput: "",
+  sampleOutput: "",
+  contestTaskId: "",
+  referer: "",
+};
 
 export default function AdminTrackDetailPage() {
   const params = useParams();
   const trackId = params.trackId as string;
   const track = getTrack(trackId);
 
-  const problems = useQuery(api.trackProblems.listByTrack, {
-    trackSlug: trackId,
-  });
-  const languages = useQuery(api.programmingLanguages.listByTrack, {
-    trackSlug: trackId,
-  });
+  const problems = useQuery(api.trackProblems.listByTrack, { trackSlug: trackId });
+  const languages = useQuery(api.programmingLanguages.listByTrack, { trackSlug: trackId });
+  const settings = useQuery(api.trackSettings.getBySlug, { trackSlug: trackId });
+
+  const createProblem = useMutation(api.trackProblems.create);
+  const updateProblem = useMutation(api.trackProblems.update);
+  const removeProblem = useMutation(api.trackProblems.remove);
+  const setActive = useMutation(api.trackSettings.setActive);
+
+  const [mode, setMode] = useState<"view" | "add" | "edit">("view");
+  const [editingId, setEditingId] = useState<Id<"trackProblems"> | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<Id<"trackProblems"> | null>(null);
+
+  const isActive = settings !== undefined
+    ? (settings?.isActive ?? (track?.isActive ?? true))
+    : (track?.isActive ?? true);
 
   if (!track) {
     return <div className="p-8 text-gray-400">Track not found.</div>;
   }
 
+  function startAdd() {
+    const nextOrder = (problems?.length ?? 0) + 1;
+    setForm({ ...EMPTY_FORM, order: nextOrder });
+    setEditingId(null);
+    setMode("add");
+  }
+
+  function startEdit(p: Problem) {
+    setForm({
+      slug: p.slug,
+      name: p.name,
+      description: p.description,
+      points: p.points,
+      order: p.order,
+      sampleInput: p.sampleInput ?? "",
+      sampleOutput: p.sampleOutput ?? "",
+      contestTaskId: p.contestTaskId !== undefined ? String(p.contestTaskId) : "",
+      referer: p.referer ?? "",
+    });
+    setEditingId(p._id);
+    setMode("edit");
+  }
+
+  function cancelForm() {
+    setMode("view");
+    setEditingId(null);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const contestTaskId = form.contestTaskId
+        ? parseInt(form.contestTaskId)
+        : undefined;
+
+      if (mode === "add") {
+        await createProblem({
+          trackSlug: trackId,
+          slug: form.slug.trim().toLowerCase().replace(/\s+/g, "-"),
+          name: form.name.trim(),
+          description: form.description.trim(),
+          points: Number(form.points),
+          order: Number(form.order),
+          sampleInput: form.sampleInput || undefined,
+          sampleOutput: form.sampleOutput || undefined,
+          contestTaskId,
+          referer: form.referer || undefined,
+        });
+      } else if (mode === "edit" && editingId) {
+        await updateProblem({
+          id: editingId,
+          name: form.name.trim(),
+          description: form.description.trim(),
+          points: Number(form.points),
+          order: Number(form.order),
+          sampleInput: form.sampleInput || undefined,
+          sampleOutput: form.sampleOutput || undefined,
+          contestTaskId,
+          referer: form.referer || undefined,
+        });
+      }
+      setMode("view");
+      setEditingId(null);
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: Id<"trackProblems">) {
+    await removeProblem({ id });
+    setDeleteConfirm(null);
+  }
+
   return (
-    <div className="p-8">
+    <div className="p-8 max-w-5xl">
+      {/* Back */}
       <div className="mb-4">
-        <Link
-          href="/admin/tracks"
-          className="text-sm text-gray-400 hover:text-white transition-colors"
-        >
+        <Link href="/admin/tracks" className="text-sm text-gray-400 hover:text-white transition-colors">
           ← Back to tracks
         </Link>
       </div>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">
-          <span className="mr-2">{track.icon}</span>
-          {track.name}
-        </h1>
-        <p className="text-sm text-gray-400 mt-1">{track.description}</p>
-        <p className="text-xs text-gray-500 mt-2">
-          Languages: {languages ? languages.map((l) => l.name).join(", ") : "Loading..."} &middot;
-          Run: <code className="text-gray-400">{track.runEndpoint}</code> &middot;
-          Submit: <code className="text-gray-400">{track.submitEndpoint}</code>
-        </p>
+      {/* Track header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">
+            <span className="mr-2">{track.icon}</span>
+            {track.name}
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">{track.description}</p>
+          <p className="text-xs text-gray-500 mt-2">
+            Run: <code className="text-gray-400">{track.runEndpoint}</code>
+            {" · "}Submit: <code className="text-gray-400">{track.submitEndpoint}</code>
+          </p>
+        </div>
+
+        {/* Track active toggle */}
+        <div className="flex items-center gap-3">
+          <span className={`text-sm font-medium ${isActive ? "text-green-400" : "text-gray-500"}`}>
+            {isActive ? "Active" : "Inactive"}
+          </span>
+          <button
+            onClick={() => setActive({ trackSlug: trackId, isActive: !isActive })}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+              isActive ? "bg-green-500" : "bg-gray-600"
+            }`}
+            title={isActive ? "Disable track" : "Enable track"}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                isActive ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
+      {/* Languages info */}
+      <div className="mb-6 p-4 bg-[#111127] border border-gray-800 rounded-xl">
+        <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2">Languages ({languages?.length ?? "…"})</h2>
+        {languages ? (
+          <p className="text-sm text-gray-300">
+            {languages.map((l) => l.name).join(", ")}
+          </p>
+        ) : (
+          <p className="text-sm text-gray-500">Loading…</p>
+        )}
+        <p className="text-xs text-gray-600 mt-1">Languages are seeded from CSAcademy and cannot be edited here.</p>
+      </div>
+
+      {/* Problems section */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-white">
+          Problems ({problems?.length ?? "…"})
+        </h2>
+        {mode === "view" && (
+          <button
+            onClick={startAdd}
+            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            + Add Problem
+          </button>
+        )}
+      </div>
+
+      {/* Add / Edit form */}
+      {(mode === "add" || mode === "edit") && (
+        <div className="mb-6 p-5 bg-[#111127] border border-blue-500/30 rounded-xl">
+          <h3 className="text-sm font-semibold text-blue-400 mb-4">
+            {mode === "add" ? "New Problem" : "Edit Problem"}
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            {mode === "add" && (
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-xs text-gray-400 mb-1">Slug (URL-safe, unique)</label>
+                <input
+                  value={form.slug}
+                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                  className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="my-problem-slug"
+                />
+              </div>
+            )}
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Name</label>
+              <input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="Problem Name"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Points</label>
+              <input
+                type="number"
+                value={form.points}
+                onChange={(e) => setForm({ ...form, points: Number(e.target.value) })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Order</label>
+              <input
+                type="number"
+                value={form.order}
+                onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-400 mb-1">Description</label>
+              <textarea
+                rows={6}
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                placeholder="Problem statement…"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Sample Input</label>
+              <textarea
+                rows={3}
+                value={form.sampleInput}
+                onChange={(e) => setForm({ ...form, sampleInput: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Sample Output</label>
+              <textarea
+                rows={3}
+                value={form.sampleOutput}
+                onChange={(e) => setForm({ ...form, sampleOutput: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">CSAcademy Task ID</label>
+              <input
+                type="number"
+                value={form.contestTaskId}
+                onChange={(e) => setForm({ ...form, contestTaskId: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="e.g. 51724"
+              />
+            </div>
+            <div className="col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Referer URL</label>
+              <input
+                value={form.referer}
+                onChange={(e) => setForm({ ...form, referer: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="https://csacademy.com/…"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={handleSave}
+              disabled={saving || !form.name.trim() || !form.description.trim() || (mode === "add" && !form.slug.trim())}
+              className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
+            >
+              {saving ? "Saving…" : mode === "add" ? "Create Problem" : "Save Changes"}
+            </button>
+            <button
+              onClick={cancelForm}
+              className="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Problem table */}
       {problems === undefined ? (
-        <div className="text-gray-400">Loading problems...</div>
+        <div className="text-gray-400">Loading problems…</div>
       ) : problems.length === 0 ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
-          No problems seeded for this track.
+          No problems yet. Click "Add Problem" to create the first one.
         </div>
       ) : (
         <div className="border border-gray-800 rounded-xl overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="bg-[#111127] border-b border-gray-800">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  #
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  Name
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  Slug
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  Task ID
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  Points
-                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">#</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Slug</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Task ID</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
               {problems.map((p) => (
-                <tr
-                  key={p._id}
-                  className="border-b border-gray-800/50 hover:bg-[#111127]/50"
-                >
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {p.order}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-white">{p.name}</td>
-                  <td className="px-4 py-3 text-sm text-gray-400 font-mono">
-                    {p.slug}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">
-                    {p.contestTaskId}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">
-                    {p.points}
+                <tr key={p._id} className="border-b border-gray-800/50 hover:bg-[#111127]/50">
+                  <td className="px-4 py-3 text-sm text-gray-500">{p.order}</td>
+                  <td className="px-4 py-3 text-sm text-white font-medium">{p.name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400 font-mono">{p.slug}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400">{p.contestTaskId ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400">{p.points}</td>
+                  <td className="px-4 py-3 text-right">
+                    {deleteConfirm === p._id ? (
+                      <span className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-red-400">Delete?</span>
+                        <button
+                          onClick={() => handleDelete(p._id)}
+                          className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(null)}
+                          className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => startEdit(p)}
+                          className="text-xs px-2 py-1 text-blue-400 hover:text-blue-300 border border-blue-400/30 hover:border-blue-300 rounded transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(p._id)}
+                          className="text-xs px-2 py-1 text-red-400 hover:text-red-300 border border-red-400/30 hover:border-red-300 rounded transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

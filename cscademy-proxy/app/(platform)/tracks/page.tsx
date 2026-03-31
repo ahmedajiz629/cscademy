@@ -5,9 +5,17 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { getAllTracks } from "@/lib/tracks";
 
-const tracks = getAllTracks(true);
+const allTracks = getAllTracks();
 
 export default function TracksPage() {
+  const trackSettings = useQuery(api.trackSettings.list);
+
+  // Resolve effective isActive: DB override → code default
+  const tracks = allTracks.filter((t) => {
+    const override = trackSettings?.find((s) => s.trackSlug === t.id);
+    return override !== undefined ? override.isActive : t.isActive;
+  });
+
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-white mb-6">Tracks</h1>

@@ -12,6 +12,7 @@ import type * as csacademyAccounts from "../csacademyAccounts.js";
 import type * as programmingLanguages from "../programmingLanguages.js";
 import type * as scores from "../scores.js";
 import type * as trackProblems from "../trackProblems.js";
+import type * as trackSettings from "../trackSettings.js";
 import type * as users from "../users.js";
 
 import type {
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   programmingLanguages: typeof programmingLanguages;
   scores: typeof scores;
   trackProblems: typeof trackProblems;
+  trackSettings: typeof trackSettings;
   users: typeof users;
 }>;
 

@@ -55,6 +55,35 @@ export const create = mutation({
   },
 });
 
+export const update = mutation({
+  args: {
+    id: v.id("trackProblems"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    points: v.optional(v.number()),
+    order: v.optional(v.number()),
+    sampleInput: v.optional(v.string()),
+    sampleOutput: v.optional(v.string()),
+    starterCode: v.optional(v.string()),
+    contestTaskId: v.optional(v.number()),
+    referer: v.optional(v.string()),
+  },
+  handler: async (ctx, { id, ...fields }) => {
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined) clean[k] = v;
+    }
+    await ctx.db.patch(id, clean);
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("trackProblems") },
+  handler: async (ctx, { id }) => {
+    await ctx.db.delete(id);
+  },
+});
+
 export const clearByTrack = mutation({
   args: { trackSlug: v.string() },
   handler: async (ctx, { trackSlug }) => {

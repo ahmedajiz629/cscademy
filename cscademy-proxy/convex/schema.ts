@@ -45,6 +45,12 @@ export default defineSchema({
     order: v.number(),
   }).index("by_trackSlug", ["trackSlug"]),
 
+  // Admin overrides for track active state (default = code module's isActive)
+  trackSettings: defineTable({
+    trackSlug: v.string(),
+    isActive: v.boolean(),
+  }).index("by_trackSlug", ["trackSlug"]),
+
   // User scores per problem
   scores: defineTable({
     userId: v.id("users"),

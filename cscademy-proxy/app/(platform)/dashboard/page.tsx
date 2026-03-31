@@ -14,8 +14,7 @@ interface User {
   role: string;
 }
 
-const tracks = getAllTracks(true);
-const trackSlugs = tracks.map((t) => t.id);
+const allTracks = getAllTracks();
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -27,10 +26,17 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
+  const trackSettings = useQuery(api.trackSettings.list);
   const scores = useQuery(
     api.scores.getAllByUser,
     user?.id ? { userId: user.id as Id<"users"> } : "skip"
   );
+
+  // Resolve effective isActive: DB override → code default
+  const tracks = allTracks.filter((t) => {
+    const override = trackSettings?.find((s) => s.trackSlug === t.id);
+    return override !== undefined ? override.isActive : t.isActive;
+  });
 
   function getTrackScore(trackSlug: string) {
     if (!scores) return { earned: 0, count: 0 };
