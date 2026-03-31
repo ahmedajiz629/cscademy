@@ -20,6 +20,7 @@ type Problem = {
   contestTaskId?: number;
   referer?: string;
   starterCode?: string;
+  isActive?: boolean;
 };
 
 const EMPTY_FORM = {
@@ -39,13 +40,14 @@ export default function AdminTrackDetailPage() {
   const trackId = params.trackId as string;
   const track = getTrack(trackId);
 
-  const problems = useQuery(api.trackProblems.listByTrack, { trackSlug: trackId });
+  const problems = useQuery(api.trackProblems.listByTrackAdmin, { trackSlug: trackId });
   const languages = useQuery(api.programmingLanguages.listByTrack, { trackSlug: trackId });
   const settings = useQuery(api.trackSettings.getBySlug, { trackSlug: trackId });
 
   const createProblem = useMutation(api.trackProblems.create);
   const updateProblem = useMutation(api.trackProblems.update);
   const removeProblem = useMutation(api.trackProblems.remove);
+  const setProblemActive = useMutation(api.trackProblems.setActive);
   const setActive = useMutation(api.trackSettings.setActive);
 
   const [mode, setMode] = useState<"view" | "add" | "edit">("view");
@@ -337,17 +339,35 @@ export default function AdminTrackDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Slug</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Task ID</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {problems.map((p) => (
-                <tr key={p._id} className="border-b border-gray-800/50 hover:bg-[#111127]/50">
+              {problems.map((p) => {
+                const problemActive = p.isActive !== false;
+                return (
+                <tr key={p._id} className={`border-b border-gray-800/50 hover:bg-[#111127]/50 ${!problemActive ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 text-sm text-gray-500">{p.order}</td>
                   <td className="px-4 py-3 text-sm text-white font-medium">{p.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-400 font-mono">{p.slug}</td>
                   <td className="px-4 py-3 text-sm text-gray-400">{p.contestTaskId ?? "—"}</td>
                   <td className="px-4 py-3 text-sm text-gray-400">{p.points}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() => setProblemActive({ id: p._id, isActive: !problemActive })}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                        problemActive ? "bg-green-500" : "bg-gray-600"
+                      }`}
+                      title={problemActive ? "Disable problem" : "Enable problem"}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                          problemActive ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     {deleteConfirm === p._id ? (
                       <span className="flex items-center justify-end gap-2">
@@ -383,7 +403,8 @@ export default function AdminTrackDetailPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -8,6 +8,20 @@ export const listByTrack = query({
       .query("trackProblems")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
+    return problems
+      .filter((p) => p.isActive !== false)
+      .sort((a, b) => a.order - b.order);
+  },
+});
+
+// Admin variant — returns all problems including disabled ones
+export const listByTrackAdmin = query({
+  args: { trackSlug: v.string() },
+  handler: async (ctx, { trackSlug }) => {
+    const problems = await ctx.db
+      .query("trackProblems")
+      .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
+      .collect();
     return problems.sort((a, b) => a.order - b.order);
   },
 });
@@ -21,7 +35,10 @@ export const getBySlug = query({
         q.eq("trackSlug", trackSlug).eq("slug", slug)
       )
       .collect();
-    return results[0] || null;
+    const problem = results[0] || null;
+    // Return null for disabled problems (students see "not found")
+    if (problem?.isActive === false) return null;
+    return problem;
   },
 });
 
@@ -95,5 +112,12 @@ export const clearByTrack = mutation({
       await ctx.db.delete(p._id);
     }
     return problems.length;
+  },
+});
+
+export const setActive = mutation({
+  args: { id: v.id("trackProblems"), isActive: v.boolean() },
+  handler: async (ctx, { id, isActive }) => {
+    await ctx.db.patch(id, { isActive });
   },
 });

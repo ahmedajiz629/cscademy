@@ -32,6 +32,7 @@ export default defineSchema({
     starterCode: v.optional(v.string()), // JSON Record<langId, code>
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    isActive: v.optional(v.boolean()), // undefined/true = active, false = disabled
   })
     .index("by_trackSlug", ["trackSlug"])
     .index("by_trackSlug_slug", ["trackSlug", "slug"]),
