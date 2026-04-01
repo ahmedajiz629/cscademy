@@ -30,6 +30,7 @@ export const create = mutation({
     email: v.string(),
     passwordHash: v.string(),
     role: v.union(v.literal("admin"), v.literal("student")),
+    offlineGatewayUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -54,6 +55,7 @@ export const update = mutation({
     passwordHash: v.optional(v.string()),
     role: v.optional(v.union(v.literal("admin"), v.literal("student"))),
     isActive: v.optional(v.boolean()),
+    offlineGatewayUrl: v.optional(v.string()),
   },
   handler: async (ctx, { id, ...fields }) => {
     const clean: Record<string, any> = {};

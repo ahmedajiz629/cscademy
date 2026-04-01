@@ -15,15 +15,21 @@ interface User {
   role: string;
 }
 
+interface TrackProblemListItem {
+  slug: string;
+  name: string;
+  points: number;
+  isOffline: boolean;
+  offlineStatus: "ready" | "pending" | "active" | "closed" | null;
+}
+
 export default function TrackDetailPage() {
   const params = useParams();
   const trackId = params.trackId as string;
   const [user, setUser] = useState<User | null>(null);
+  const [problems, setProblems] = useState<TrackProblemListItem[] | null>(null);
 
   const track = getTrack(trackId);
-  const problems = useQuery(api.trackProblems.listByTrack, {
-    trackSlug: trackId,
-  });
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -31,6 +37,17 @@ export default function TrackDetailPage() {
       .then((d) => setUser(d.user))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setProblems(null);
+    fetch(`/api/tracks/${trackId}/problems`, { cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Failed to load problems");
+        return r.json();
+      })
+      .then((d) => setProblems(d.problems || []))
+      .catch(() => setProblems([]));
+  }, [trackId]);
 
   const scores = useQuery(
     api.scores.getByUserAndTrack,
@@ -84,9 +101,13 @@ export default function TrackDetailPage() {
         </div>
       </div>
 
-      {problemsList.length === 0 ? (
+      {problems === null ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
-          {problems === undefined ? "Loading problems..." : "No problems in this track yet."}
+          Loading problems...
+        </div>
+      ) : problemsList.length === 0 ? (
+        <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
+          No problems in this track yet.
         </div>
       ) : (
         <div className="space-y-2">
@@ -104,15 +125,34 @@ export default function TrackDetailPage() {
                     {idx + 1}
                   </span>
                   <div>
-                    <h3 className="text-white font-medium group-hover:text-blue-400 transition-colors">
-                      {problem.name}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-white font-medium group-hover:text-blue-400 transition-colors">
+                        {problem.name}
+                      </h3>
+                      {problem.isOffline && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wide">
+                          Offline
+                        </span>
+                      )}
+                    </div>
                     <p className="text-gray-500 text-xs mt-0.5">
                       {problem.points} pts
+                      {problem.isOffline && " · requires live LAN connection"}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {problem.isOffline && problem.offlineStatus && (
+                    <span
+                      className={`text-[10px] uppercase tracking-wide ${
+                        problem.offlineStatus === "closed"
+                          ? "text-red-400"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {problem.offlineStatus}
+                    </span>
+                  )}
                   {sc && (
                     <>
                       <span

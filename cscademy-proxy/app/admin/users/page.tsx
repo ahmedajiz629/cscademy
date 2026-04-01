@@ -10,6 +10,7 @@ interface UserForm {
   email: string;
   password: string;
   role: "admin" | "student";
+  offlineGatewayUrl: string;
   csaEmail: string;
   csaPassword: string;
 }
@@ -19,6 +20,7 @@ const emptyForm: UserForm = {
   email: "",
   password: "",
   role: "student",
+  offlineGatewayUrl: "",
   csaEmail: "",
   csaPassword: "",
 };
@@ -50,6 +52,7 @@ export default function AdminUsersPage() {
       email: user.email,
       password: "",
       role: user.role,
+      offlineGatewayUrl: user.offlineGatewayUrl ?? "",
       csaEmail: "",
       csaPassword: "",
     });
@@ -80,7 +83,13 @@ export default function AdminUsersPage() {
 
       if (editingId) {
         userId = editingId as Id<"users">;
-        const updates: any = { id: userId, name: form.name, email: form.email, role: form.role };
+        const updates: any = {
+          id: userId,
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          offlineGatewayUrl: form.offlineGatewayUrl.trim() || undefined,
+        };
         if (form.password) {
           // Hash password on server
           const hashRes = await fetch("/api/admin/hash-password", {
@@ -111,6 +120,7 @@ export default function AdminUsersPage() {
           email: form.email,
           passwordHash: hashData.hash,
           role: form.role,
+          offlineGatewayUrl: form.offlineGatewayUrl.trim() || undefined,
         });
       }
 
@@ -213,6 +223,22 @@ export default function AdminUsersPage() {
                   <option value="admin">Admin</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">
+                  Offline Gateway URL
+                </label>
+                <input
+                  value={form.offlineGatewayUrl}
+                  onChange={(e) =>
+                    setForm({ ...form, offlineGatewayUrl: e.target.value })
+                  }
+                  placeholder="ws://192.168.1.10:8787"
+                  className="w-full px-3 py-2 bg-[#1a1a2e] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for offline tasks. Leave empty to hide offline tasks for this participant.
+                </p>
+              </div>
 
               <div className="pt-3 border-t border-gray-800">
                 <p className="text-xs text-gray-500 mb-2">
@@ -274,6 +300,9 @@ export default function AdminUsersPage() {
                   Email
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                  Offline Gateway
+                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
                   Role
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
@@ -293,6 +322,15 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3 text-sm text-white">{user.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-400">
                     {user.email}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    {user.offlineGatewayUrl ? (
+                      <span className="font-mono text-xs text-gray-300">
+                        {user.offlineGatewayUrl}
+                      </span>
+                    ) : (
+                      <span className="text-gray-600">Not configured</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span

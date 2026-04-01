@@ -9,6 +9,7 @@ export default defineSchema({
     passwordHash: v.string(),
     role: v.union(v.literal("admin"), v.literal("student")),
     isActive: v.boolean(),
+    offlineGatewayUrl: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_email", ["email"]),
 
@@ -33,9 +34,33 @@ export default defineSchema({
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
     isActive: v.optional(v.boolean()), // undefined/true = active, false = disabled
+    isOffline: v.optional(v.boolean()), // undefined/false = regular online task
   })
     .index("by_trackSlug", ["trackSlug"])
     .index("by_trackSlug_slug", ["trackSlug", "slug"]),
+
+  // Per-student lifecycle for offline/LAN-gated problems
+  offlineProblemSessions: defineTable({
+    userId: v.id("users"),
+    trackSlug: v.string(),
+    problemSlug: v.string(),
+    sessionId: v.string(),
+    gatewayUrl: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("terminated")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    startedAt: v.optional(v.number()),
+    lastHeartbeatAt: v.optional(v.number()),
+    terminatedAt: v.optional(v.number()),
+    terminatedReason: v.optional(v.string()),
+  })
+    .index("by_user_problem", ["userId", "trackSlug", "problemSlug"])
+    .index("by_user_track", ["userId", "trackSlug"])
+    .index("by_sessionId", ["sessionId"]),
 
   // Programming languages available per track (seeded from CSAcademy)
   programmingLanguages: defineTable({

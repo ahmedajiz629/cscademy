@@ -21,6 +21,7 @@ type Problem = {
   referer?: string;
   starterCode?: string;
   isActive?: boolean;
+  isOffline?: boolean;
 };
 
 const EMPTY_FORM = {
@@ -33,6 +34,7 @@ const EMPTY_FORM = {
   sampleOutput: "",
   contestTaskId: "",
   referer: "",
+  isOffline: false,
 };
 
 export default function AdminTrackDetailPage() {
@@ -82,6 +84,7 @@ export default function AdminTrackDetailPage() {
       sampleOutput: p.sampleOutput ?? "",
       contestTaskId: p.contestTaskId !== undefined ? String(p.contestTaskId) : "",
       referer: p.referer ?? "",
+      isOffline: p.isOffline ?? false,
     });
     setEditingId(p._id);
     setMode("edit");
@@ -111,6 +114,7 @@ export default function AdminTrackDetailPage() {
           sampleOutput: form.sampleOutput || undefined,
           contestTaskId,
           referer: form.referer || undefined,
+          isOffline: form.isOffline,
         });
       } else if (mode === "edit" && editingId) {
         await updateProblem({
@@ -123,6 +127,7 @@ export default function AdminTrackDetailPage() {
           sampleOutput: form.sampleOutput || undefined,
           contestTaskId,
           referer: form.referer || undefined,
+          isOffline: form.isOffline,
         });
       }
       setMode("view");
@@ -256,6 +261,23 @@ export default function AdminTrackDetailPage() {
                 className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
+                  form.isOffline
+                    ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+                    : "bg-gray-800 border-gray-700 text-gray-200"
+                }`}
+              >
+                <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
+                <span className="text-xs uppercase tracking-wide">
+                  {form.isOffline ? "Offline" : "Online"}
+                </span>
+              </button>
+            </div>
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1">Description</label>
               <textarea
@@ -337,6 +359,7 @@ export default function AdminTrackDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">#</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Slug</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Mode</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Task ID</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active</th>
@@ -351,6 +374,17 @@ export default function AdminTrackDetailPage() {
                   <td className="px-4 py-3 text-sm text-gray-500">{p.order}</td>
                   <td className="px-4 py-3 text-sm text-white font-medium">{p.name}</td>
                   <td className="px-4 py-3 text-sm text-gray-400 font-mono">{p.slug}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        p.isOffline
+                          ? "bg-amber-500/20 text-amber-300"
+                          : "bg-sky-500/20 text-sky-300"
+                      }`}
+                    >
+                      {p.isOffline ? "Offline" : "Online"}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-400">{p.contestTaskId ?? "—"}</td>
                   <td className="px-4 py-3 text-sm text-gray-400">{p.points}</td>
                   <td className="px-4 py-3 text-center">

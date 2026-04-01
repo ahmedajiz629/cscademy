@@ -9,6 +9,7 @@
  */
 
 import type * as csacademyAccounts from "../csacademyAccounts.js";
+import type * as offlineProblemSessions from "../offlineProblemSessions.js";
 import type * as programmingLanguages from "../programmingLanguages.js";
 import type * as scores from "../scores.js";
 import type * as trackProblems from "../trackProblems.js";
@@ -23,6 +24,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   csacademyAccounts: typeof csacademyAccounts;
+  offlineProblemSessions: typeof offlineProblemSessions;
   programmingLanguages: typeof programmingLanguages;
   scores: typeof scores;
   trackProblems: typeof trackProblems;

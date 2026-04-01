@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "offline-gateway": "node ./scripts/offline-gateway.mjs"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.2",

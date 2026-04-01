@@ -49,7 +49,7 @@ export const countByTrack = query({
       .query("trackProblems")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
-    return problems.length;
+    return problems.filter((p) => p.isActive !== false).length;
   },
 });
 
@@ -66,6 +66,7 @@ export const create = mutation({
     starterCode: v.optional(v.string()),
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("trackProblems", args);
@@ -84,6 +85,7 @@ export const update = mutation({
     starterCode: v.optional(v.string()),
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
     const clean: Record<string, unknown> = {};
@@ -121,3 +123,4 @@ export const setActive = mutation({
     await ctx.db.patch(id, { isActive });
   },
 });
+

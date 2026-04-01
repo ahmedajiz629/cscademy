@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -18,21 +18,52 @@ const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
   ),
 });
 
+interface ProblemDetails {
+  slug: string;
+  name: string;
+  description: string;
+  points: number;
+  sampleInput?: string;
+  sampleOutput?: string;
+  starterCode?: string;
+  isOffline?: boolean;
+}
+
+interface OfflineProblemPreview {
+  slug: string;
+  name: string;
+  points: number;
+  isOffline: true;
+}
+
+type ProblemAccessState =
+  | { status: "loading" }
+  | { status: "not_found" }
+  | {
+      status: "closed";
+      problem: OfflineProblemPreview;
+      closedReason?: string;
+    }
+  | {
+      status: "offline_confirmation";
+      problem: OfflineProblemPreview;
+      gatewayUrl: string;
+    }
+  | { status: "ready"; problem: ProblemDetails };
+
 export default function ProblemIDEPage() {
   const params = useParams();
   const trackId = params.trackId as string;
   const problemId = params.problemId as string;
 
   const track = getTrack(trackId);
-  const problem = useQuery(api.trackProblems.getBySlug, {
-    trackSlug: trackId,
-    slug: problemId,
-  });
   const languages = useQuery(api.programmingLanguages.listByTrack, {
     trackSlug: trackId,
   });
 
-  const defaultLangId = languages?.[0]?.langId || "1";
+  const [problemState, setProblemState] = useState<ProblemAccessState>({
+    status: "loading",
+  });
   const [langId, setLangId] = useState("");
   const [code, setCode] = useState("");
   const [input, setInput] = useState("");
@@ -42,6 +73,73 @@ export default function ProblemIDEPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+  const [isConnectingOffline, setIsConnectingOffline] = useState(false);
+  const [offlineError, setOfflineError] = useState("");
+
+  const socketRef = useRef<WebSocket | null>(null);
+  const offlineStartedRef = useRef(false);
+
+  const loadProblem = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/tracks/${trackId}/problems/${problemId}`, {
+        cache: "no-store",
+      });
+
+      if (response.status === 404) {
+        setProblemState({ status: "not_found" });
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to load problem");
+      }
+
+      const data = await response.json();
+      if (data.status === "closed") {
+        setProblemState({
+          status: "closed",
+          problem: data.problem,
+          closedReason: data.closedReason,
+        });
+        return;
+      }
+
+      if (data.status === "offline_confirmation") {
+        setProblemState({
+          status: "offline_confirmation",
+          problem: data.problem,
+          gatewayUrl: data.gatewayUrl,
+        });
+        return;
+      }
+
+      setProblemState({ status: "ready", problem: data.problem });
+    } catch {
+      setProblemState({ status: "not_found" });
+    }
+  }, [problemId, trackId]);
+
+  useEffect(() => {
+    setProblemState({ status: "loading" });
+    setLangId("");
+    setCode("");
+    setInput("");
+    setOutput("");
+    setTestResults(null);
+    setScore(null);
+    setOfflineError("");
+    void loadProblem();
+  }, [loadProblem]);
+
+  useEffect(() => {
+    return () => {
+      socketRef.current?.close();
+      socketRef.current = null;
+    };
+  }, []);
+
+  const problem = problemState.status === "ready" ? problemState.problem : null;
+  const defaultLangId = languages?.[0]?.langId || "1";
 
   const starterCodeMap = useMemo(() => {
     if (!problem?.starterCode) return {};
@@ -52,14 +150,12 @@ export default function ProblemIDEPage() {
     }
   }, [problem?.starterCode]);
 
-  // Set default language when languages load
   useEffect(() => {
     if (languages && languages.length > 0 && !langId) {
       setLangId(languages[0].langId);
     }
   }, [languages, langId]);
 
-  // Initialize code with starter code for selected language
   useEffect(() => {
     if (problem && langId) {
       const starter = starterCodeMap[langId] || starterCodeMap[defaultLangId] || "";
@@ -67,7 +163,6 @@ export default function ProblemIDEPage() {
     }
   }, [problem, langId, defaultLangId, starterCodeMap]);
 
-  // Initialize input with sample
   useEffect(() => {
     if (problem?.sampleInput && !input) {
       setInput(problem.sampleInput);
@@ -90,10 +185,10 @@ export default function ProblemIDEPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contestTaskId: problem.contestTaskId,
+          trackSlug: trackId,
+          problemSlug: problemId,
           sourceCode: code,
           input,
-          referer: problem.referer || "",
           programmingLanguageId: langId,
         }),
       });
@@ -120,7 +215,7 @@ export default function ProblemIDEPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [problem, track, code, input, langId]);
+  }, [code, input, langId, problem, problemId, track, trackId]);
 
   const submitCode = useCallback(async () => {
     if (!problem || !track) return;
@@ -135,12 +230,10 @@ export default function ProblemIDEPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contestTaskId: problem.contestTaskId,
-          sourceCode: code,
-          referer: problem.referer || "",
-          programmingLanguageId: langId,
           trackSlug: trackId,
           problemSlug: problemId,
+          sourceCode: code,
+          programmingLanguageId: langId,
         }),
       });
 
@@ -156,12 +249,10 @@ export default function ProblemIDEPage() {
             : null;
         setScore(sc);
 
-        // Store test results for the test case table
         if (results.tests && Array.isArray(results.tests)) {
           setTestResults(results.tests);
         }
 
-        // Build summary output
         const lines: string[] = [];
         if (sc !== null) lines.push(`Score: ${sc.toFixed(0)}/100`);
         if (results.tests && Array.isArray(results.tests)) {
@@ -176,19 +267,82 @@ export default function ProblemIDEPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [problem, track, code, trackId, problemId, langId]);
+  }, [code, langId, problem, problemId, track, trackId]);
 
-  if (!track || problem === undefined || languages === undefined) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="text-gray-400">
-          {problem === undefined ? "Loading..." : "Problem not found."}
-        </div>
-      </div>
-    );
-  }
+  const startOfflineTask = useCallback(async () => {
+    setIsConnectingOffline(true);
+    setOfflineError("");
+    offlineStartedRef.current = false;
+    socketRef.current?.close();
 
-  if (!problem) {
+    try {
+      const res = await fetch("/api/offline/problem-entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to start offline task");
+      }
+
+      const wsUrl = new URL(data.gatewayUrl);
+      wsUrl.searchParams.set("token", data.token);
+      const socket = new WebSocket(wsUrl.toString());
+      socketRef.current = socket;
+
+      socket.addEventListener("message", (event) => {
+        if (typeof event.data !== "string") {
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === "ready") {
+            offlineStartedRef.current = true;
+            setIsConnectingOffline(false);
+            void loadProblem();
+          }
+        } catch {
+          // Ignore non-JSON payloads from the local gateway.
+        }
+      });
+
+      socket.addEventListener("error", () => {
+        setOfflineError("Could not connect to the LAN gateway.");
+      });
+
+      socket.addEventListener("close", () => {
+        socketRef.current = null;
+        if (offlineStartedRef.current) {
+          setProblemState({
+            status: "closed",
+            problem:
+              problemState.status === "offline_confirmation"
+                ? problemState.problem
+                : {
+                    slug: problemId,
+                    name: "Offline task",
+                    points: 0,
+                    isOffline: true,
+                  },
+            closedReason: "connection_lost",
+          });
+        } else {
+          setIsConnectingOffline(false);
+          setOfflineError(
+            "Connection to the LAN gateway was lost before the task started."
+          );
+        }
+      });
+    } catch (err: any) {
+      setIsConnectingOffline(false);
+      setOfflineError(err.message || "Failed to start offline task");
+    }
+  }, [loadProblem, problemId, problemState, trackId]);
+
+  if (!track) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-gray-400">Problem not found.</div>
@@ -196,9 +350,136 @@ export default function ProblemIDEPage() {
     );
   }
 
+  if (problemState.status === "loading") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (problemState.status === "not_found") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-gray-400">Problem not found.</div>
+      </div>
+    );
+  }
+
+  if (problemState.status === "closed") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0a0a0a] p-6">
+        <div className="w-full max-w-2xl bg-[#111127] border border-red-500/30 rounded-2xl p-8">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-red-300 mb-2">
+                Task Closed
+              </p>
+              <h1 className="text-2xl font-bold text-white">
+                {problemState.problem.name}
+              </h1>
+              <p className="text-sm text-gray-400 mt-1">
+                {problemState.problem.points} pts
+              </p>
+            </div>
+            <Link
+              href={`/tracks/${trackId}`}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              ← Back to track
+            </Link>
+          </div>
+
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-200 space-y-3">
+            <p>
+              This offline task has been closed for your account.
+            </p>
+            <p>
+              Once the LAN WebSocket connection is lost, the task cannot be reopened and no further work can be submitted.
+            </p>
+            {problemState.closedReason && (
+              <p className="text-xs uppercase tracking-wide text-red-300/80">
+                Reason: {problemState.closedReason}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (problemState.status === "offline_confirmation") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0a0a0a] p-6">
+        <div className="w-full max-w-2xl bg-[#111127] border border-amber-500/30 rounded-2xl p-8">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-300 mb-2">
+                Offline Task
+              </p>
+              <h1 className="text-2xl font-bold text-white">
+                {problemState.problem.name}
+              </h1>
+              <p className="text-sm text-gray-400 mt-1">
+                {problemState.problem.points} pts
+              </p>
+            </div>
+            <Link
+              href={`/tracks/${trackId}`}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              ← Back to track
+            </Link>
+          </div>
+
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-100 space-y-3">
+            <p>
+              This task only becomes visible after a live WebSocket connection is established with your assigned LAN gateway.
+            </p>
+            <p>
+              Any lost connection immediately ends the task for you. Closing, refreshing, or leaving this page also counts as a disconnect.
+            </p>
+            <p className="text-xs text-amber-200/80 font-mono">
+              Gateway: {problemState.gatewayUrl}
+            </p>
+          </div>
+
+          {offlineError && (
+            <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+              {offlineError}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 mt-6">
+            <button
+              onClick={startOfflineTask}
+              disabled={isConnectingOffline}
+              className="px-5 py-2.5 text-sm bg-amber-500 hover:bg-amber-400 disabled:bg-amber-700 text-black font-medium rounded-lg transition-colors"
+            >
+              {isConnectingOffline ? "Connecting..." : "Confirm and Start"}
+            </button>
+            <Link
+              href={`/tracks/${trackId}`}
+              className="px-5 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg transition-colors"
+            >
+              Cancel
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (languages === undefined || !problem) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a]">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-[#111127]">
         <div className="flex items-center gap-3">
           <Link
@@ -210,9 +491,13 @@ export default function ProblemIDEPage() {
           <span className="text-gray-600">|</span>
           <span className="text-white font-medium">{problem.name}</span>
           <span className="text-gray-500 text-xs">{problem.points} pts</span>
+          {problem.isOffline && (
+            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wide">
+              Offline Active
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Language selector */}
           <select
             value={langId}
             onChange={(e) => setLangId(e.target.value)}
@@ -241,9 +526,7 @@ export default function ProblemIDEPage() {
         </div>
       </div>
 
-      {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Problem description */}
         <div className="w-80 border-r border-gray-800 overflow-auto p-4">
           <h2 className="text-lg font-semibold text-white mb-3">
             {problem.name}
@@ -276,13 +559,11 @@ export default function ProblemIDEPage() {
           )}
         </div>
 
-        {/* Middle: Editor */}
         <div className="flex-1 flex flex-col">
           <div className="flex-1 overflow-hidden">
             <CodeEditor value={code} onChange={setCode} language={codemirrorLang} />
           </div>
 
-          {/* Input */}
           <div className="h-28 border-t border-gray-800">
             <div className="px-3 py-1 border-b border-gray-800">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
@@ -298,7 +579,6 @@ export default function ProblemIDEPage() {
           </div>
         </div>
 
-        {/* Right: Output + Test Cases */}
         <div className="w-80 border-l border-gray-800 flex flex-col">
           <OutputPanel
             output={output}

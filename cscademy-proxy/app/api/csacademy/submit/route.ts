@@ -4,6 +4,7 @@ import { getConvexClient } from "@/lib/convex-server";
 import { csaManager } from "@/lib/csacademy-manager";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,15 +26,51 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const {
-      contestTaskId,
       sourceCode,
-      referer = "",
+      trackSlug,
+      problemSlug,
       programmingLanguageId = "1",
     } = body;
 
-    if (!contestTaskId || !sourceCode) {
+    if (!trackSlug || !problemSlug || !sourceCode) {
       return NextResponse.json(
-        { error: "contestTaskId and sourceCode are required" },
+        { error: "trackSlug, problemSlug and sourceCode are required" },
+        { status: 400 }
+      );
+    }
+
+    const access = await getRuntimeProblemAccess(
+      convex,
+      auth.userId as Id<"users">,
+      trackSlug,
+      problemSlug
+    );
+
+    if (!access.problem) {
+      return NextResponse.json({ error: "Problem not found" }, { status: 404 });
+    }
+
+    if (access.reason === "closed") {
+      return NextResponse.json(
+        { error: "This offline task is closed. No further work can be made." },
+        { status: 409 }
+      );
+    }
+
+    if (access.reason === "inactive") {
+      return NextResponse.json(
+        { error: "This offline task has not been started yet." },
+        { status: 409 }
+      );
+    }
+
+    if (!access.allowed) {
+      return NextResponse.json({ error: "Problem not found" }, { status: 404 });
+    }
+
+    if (!access.problem.contestTaskId) {
+      return NextResponse.json(
+        { error: "Problem is missing contestTaskId configuration" },
         { status: 400 }
       );
     }
@@ -41,19 +78,19 @@ export async function POST(req: NextRequest) {
     const result = await csaManager.submitCode(
       csaAccount.csaEmail,
       csaAccount.csaPassword,
-      Number(contestTaskId),
+      access.problem.contestTaskId,
       sourceCode,
-      referer,
+      access.problem.referer || "",
       programmingLanguageId
     );
 
     // Record score if available
-    if (body.problemSlug && body.trackSlug && result?.score !== undefined) {
+    if (result?.score !== undefined) {
       try {
         await convex.mutation(api.scores.upsert, {
           userId: auth.userId as Id<"users">,
-          trackSlug: body.trackSlug,
-          problemSlug: body.problemSlug,
+          trackSlug,
+          problemSlug,
           score: result.score,
         });
       } catch (e: any) {
