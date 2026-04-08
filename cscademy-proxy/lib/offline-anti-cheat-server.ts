@@ -1,6 +1,6 @@
 import "server-only";
 
-export function getOfflineAntiCheatCanaryImageUrl() {
+export function getOfflineProbeImageUrl() {
   const rawValue = process.env.OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL?.trim();
 
   if (!rawValue) {

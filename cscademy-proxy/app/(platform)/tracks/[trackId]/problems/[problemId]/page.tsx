@@ -8,9 +8,8 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { getTrack } from "@/lib/tracks";
 import {
-  buildOfflineAntiCheatCanaryUrl,
+  buildOfflineProbeUrl,
   formatOfflineClosedReason,
-  OFFLINE_ANTI_CHEAT_REASON,
   OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS,
 } from "@/lib/offline-anti-cheat";
 import OutputPanel from "@/components/OutputPanel";
@@ -33,7 +32,7 @@ interface ProblemDetails {
   sampleOutput?: string;
   starterCode?: string;
   isOffline?: boolean;
-  antiCheatCanaryImageUrl?: string;
+  probeImageUrl?: string;
 }
 
 interface OfflineProblemPreview {
@@ -96,21 +95,21 @@ export default function ProblemIDEPage() {
 
   const socketRef = useRef<WebSocket | null>(null);
   const offlineStartedRef = useRef(false);
-  const antiCheatRetryTimeoutRef = useRef<number | null>(null);
-  const antiCheatImageRef = useRef<HTMLImageElement | null>(null);
+  const probeRetryTimeoutRef = useRef<number | null>(null);
+  const probeImageRef = useRef<HTMLImageElement | null>(null);
   const pendingCloseReasonRef = useRef<string | null>(null);
-  const antiCheatTriggeredRef = useRef(false);
+  const probeTriggeredRef = useRef(false);
 
-  const clearAntiCheatCanary = useCallback(() => {
-    if (antiCheatRetryTimeoutRef.current !== null) {
-      window.clearTimeout(antiCheatRetryTimeoutRef.current);
-      antiCheatRetryTimeoutRef.current = null;
+  const clearProbeRequest = useCallback(() => {
+    if (probeRetryTimeoutRef.current !== null) {
+      window.clearTimeout(probeRetryTimeoutRef.current);
+      probeRetryTimeoutRef.current = null;
     }
 
-    if (antiCheatImageRef.current) {
-      antiCheatImageRef.current.onload = null;
-      antiCheatImageRef.current.onerror = null;
-      antiCheatImageRef.current = null;
+    if (probeImageRef.current) {
+      probeImageRef.current.onload = null;
+      probeImageRef.current.onerror = null;
+      probeImageRef.current = null;
     }
   }, []);
 
@@ -164,18 +163,18 @@ export default function ProblemIDEPage() {
     setScore(null);
     setOfflineError("");
     pendingCloseReasonRef.current = null;
-    antiCheatTriggeredRef.current = false;
-    clearAntiCheatCanary();
+    probeTriggeredRef.current = false;
+    clearProbeRequest();
     void loadProblem();
-  }, [clearAntiCheatCanary, loadProblem]);
+  }, [clearProbeRequest, loadProblem]);
 
   useEffect(() => {
     return () => {
-      clearAntiCheatCanary();
+      clearProbeRequest();
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [clearAntiCheatCanary]);
+  }, [clearProbeRequest]);
 
   const problem = problemState.status === "ready" ? problemState.problem : null;
   const defaultLangId = languages?.[0]?.langId || "1";
@@ -211,16 +210,16 @@ export default function ProblemIDEPage() {
   const currentLang = languages?.find((l) => l.langId === langId);
   const codemirrorLang = currentLang?.codemirrorMode || "cpp";
 
-  const reportAntiCheatDetection = useCallback(
+  const reportProbeHit = useCallback(
     (offlineProblem: ProblemDetails) => {
-      if (antiCheatTriggeredRef.current) {
+      if (probeTriggeredRef.current) {
         return;
       }
 
-      antiCheatTriggeredRef.current = true;
-      clearAntiCheatCanary();
+      probeTriggeredRef.current = true;
+      clearProbeRequest();
 
-      void fetch("/api/offline/anti-cheat", {
+      void fetch("/api/offline/pulse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
@@ -228,24 +227,24 @@ export default function ProblemIDEPage() {
         // Silent best-effort report. The participant should not see anything.
       });
     },
-    [clearAntiCheatCanary, problemId, trackId]
+    [clearProbeRequest, problemId, trackId]
   );
 
   useEffect(() => {
-    clearAntiCheatCanary();
+    clearProbeRequest();
 
     if (
       problemState.status !== "ready" ||
       problemState.problem.isOffline !== true ||
-      !problemState.problem.antiCheatCanaryImageUrl ||
-      antiCheatTriggeredRef.current
+      !problemState.problem.probeImageUrl ||
+      probeTriggeredRef.current
     ) {
       return;
     }
 
     const offlineProblem = problemState.problem;
-    const canaryImageUrl = offlineProblem.antiCheatCanaryImageUrl;
-    if (!canaryImageUrl) {
+    const probeImageUrl = offlineProblem.probeImageUrl;
+    if (!probeImageUrl) {
       return;
     }
 
@@ -253,54 +252,54 @@ export default function ProblemIDEPage() {
     let attempt = 0;
 
     const scheduleRetry = () => {
-      antiCheatRetryTimeoutRef.current = window.setTimeout(() => {
-        antiCheatRetryTimeoutRef.current = null;
+      probeRetryTimeoutRef.current = window.setTimeout(() => {
+        probeRetryTimeoutRef.current = null;
         if (!cancelled) {
-          loadCanary();
+          loadProbe();
         }
       }, OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS);
     };
 
-    const loadCanary = () => {
-      if (cancelled || antiCheatTriggeredRef.current) {
+    const loadProbe = () => {
+      if (cancelled || probeTriggeredRef.current) {
         return;
       }
 
       attempt += 1;
       const image = new Image();
-      antiCheatImageRef.current = image;
+      probeImageRef.current = image;
       image.decoding = "async";
       image.referrerPolicy = "no-referrer";
 
       image.onload = () => {
-        antiCheatImageRef.current = null;
+        probeImageRef.current = null;
         if (!cancelled) {
-          reportAntiCheatDetection(offlineProblem);
+          reportProbeHit(offlineProblem);
         }
       };
 
       image.onerror = () => {
-        if (antiCheatImageRef.current === image) {
-          antiCheatImageRef.current = null;
+        if (probeImageRef.current === image) {
+          probeImageRef.current = null;
         }
         if (!cancelled) {
           scheduleRetry();
         }
       };
 
-      image.src = buildOfflineAntiCheatCanaryUrl(
-        canaryImageUrl,
+      image.src = buildOfflineProbeUrl(
+        probeImageUrl,
         `${Date.now()}-${attempt}`
       );
     };
 
-    loadCanary();
+    loadProbe();
 
     return () => {
       cancelled = true;
-      clearAntiCheatCanary();
+      clearProbeRequest();
     };
-  }, [clearAntiCheatCanary, problemState, reportAntiCheatDetection]);
+  }, [clearProbeRequest, problemState, reportProbeHit]);
 
   const runCode = useCallback(async () => {
     if (!problem || !track) return;
@@ -404,8 +403,8 @@ export default function ProblemIDEPage() {
     setOfflineError("");
     offlineStartedRef.current = false;
     pendingCloseReasonRef.current = null;
-    antiCheatTriggeredRef.current = false;
-    clearAntiCheatCanary();
+    probeTriggeredRef.current = false;
+    clearProbeRequest();
     socketRef.current?.close();
 
     try {
@@ -448,7 +447,7 @@ export default function ProblemIDEPage() {
 
       socket.addEventListener("close", () => {
         socketRef.current = null;
-        clearAntiCheatCanary();
+        clearProbeRequest();
         if (offlineStartedRef.current) {
           const closedReason = pendingCloseReasonRef.current ?? "connection_lost";
           pendingCloseReasonRef.current = null;
@@ -475,7 +474,7 @@ export default function ProblemIDEPage() {
       setIsConnectingOffline(false);
       setOfflineError(err.message || "Failed to start offline task");
     }
-  }, [clearAntiCheatCanary, loadProblem, problemId, problemState, trackId]);
+  }, [clearProbeRequest, loadProblem, problemId, problemState, trackId]);
 
   if (!track) {
     return (

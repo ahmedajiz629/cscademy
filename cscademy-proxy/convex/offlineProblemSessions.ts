@@ -1,6 +1,8 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+const DEFAULT_FLAG_REASON = "probe_match";
+
 export const getByUserAndProblem = query({
   args: {
     userId: v.id("users"),
@@ -153,10 +155,15 @@ export const terminate = mutation({
     }
 
     const now = Date.now();
+    const terminatedReason =
+      !reason || reason === "connection_lost"
+        ? session.flagReason ?? "connection_lost"
+        : reason;
+
     await ctx.db.patch(session._id, {
       status: "terminated",
       terminatedAt: now,
-      terminatedReason: reason ?? "connection_lost",
+      terminatedReason,
       lastHeartbeatAt: now,
       updatedAt: now,
     });
@@ -183,7 +190,7 @@ export const flag = mutation({
     const now = Date.now();
     await ctx.db.patch(session._id, {
       flaggedAt: now,
-      flagReason: reason ?? "anti_cheat_canary",
+      flagReason: session.flagReason ?? reason ?? DEFAULT_FLAG_REASON,
       flagCount: (session.flagCount ?? 0) + 1,
       updatedAt: now,
     });

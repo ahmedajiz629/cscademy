@@ -1,13 +1,22 @@
-export const OFFLINE_ANTI_CHEAT_REASON = "anti_cheat_canary";
+const LEGACY_OFFLINE_ANTI_CHEAT_REASON = "anti_cheat_canary";
+
+export const OFFLINE_ANTI_CHEAT_REASON = "probe_match";
 export const OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS = 15000;
 
-export function buildOfflineAntiCheatCanaryUrl(
+export function buildOfflineProbeUrl(
   baseUrl: string,
   nonce: string
 ) {
   const url = new URL(baseUrl);
-  url.searchParams.set("__canary", nonce);
+  url.searchParams.set("v", nonce);
   return url.toString();
+}
+
+export function isOfflineIncidentFlag(reason?: string) {
+  return (
+    reason === OFFLINE_ANTI_CHEAT_REASON ||
+    reason === LEGACY_OFFLINE_ANTI_CHEAT_REASON
+  );
 }
 
 export function formatOfflineClosedReason(reason?: string) {
@@ -17,9 +26,11 @@ export function formatOfflineClosedReason(reason?: string) {
 
   switch (reason) {
     case "connection_lost":
-    case OFFLINE_ANTI_CHEAT_REASON:
       return "connection lost";
     default:
+      if (isOfflineIncidentFlag(reason)) {
+        return "connection lost";
+      }
       return reason.replace(/_/g, " ");
   }
 }
@@ -32,9 +43,10 @@ export function formatOfflineAdminReason(reason?: string) {
   switch (reason) {
     case "connection_lost":
       return "Connection lost";
-    case OFFLINE_ANTI_CHEAT_REASON:
-      return "Anti-cheat detected";
     default:
+      if (isOfflineIncidentFlag(reason)) {
+        return "Anti-cheat detected";
+      }
       return reason.replace(/_/g, " ");
   }
 }

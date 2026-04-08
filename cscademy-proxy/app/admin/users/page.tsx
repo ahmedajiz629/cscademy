@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   formatOfflineAdminReason,
-  OFFLINE_ANTI_CHEAT_REASON,
+  isOfflineIncidentFlag,
 } from "@/lib/offline-anti-cheat";
 
 interface UserForm {
@@ -446,7 +446,13 @@ export default function AdminUsersPage() {
               <tbody>
                 {offlineSessions.map((session) => {
                   const isClosed = session.status === "terminated";
-                  const hasAntiCheatFlag = session.flagReason === OFFLINE_ANTI_CHEAT_REASON;
+                  const incidentReasons = Array.from(
+                    new Set(
+                      [session.flagReason, session.terminatedReason].filter(
+                        (reason): reason is string => Boolean(reason)
+                      )
+                    )
+                  );
                   return (
                     <tr
                       key={session._id}
@@ -479,29 +485,21 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-400">
                         <div className="flex flex-wrap gap-2">
-                          {session.terminatedReason && (
+                          {incidentReasons.map((reason) => (
                             <span
+                              key={`${session._id}-${reason}`}
                               className={`text-xs px-2 py-0.5 rounded ${
-                                session.terminatedReason === OFFLINE_ANTI_CHEAT_REASON
+                                isOfflineIncidentFlag(reason)
                                   ? "bg-amber-500/20 text-amber-300"
-                                  : "bg-red-500/20 text-red-300"
+                                  : reason === "connection_lost"
+                                    ? "bg-red-500/20 text-red-300"
+                                    : "bg-sky-500/20 text-sky-300"
                               }`}
                             >
-                              {formatOfflineAdminReason(session.terminatedReason)}
+                              {formatOfflineAdminReason(reason)}
                             </span>
-                          )}
-                          {session.flagReason && !isClosed && (
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded ${
-                                hasAntiCheatFlag
-                                  ? "bg-amber-500/20 text-amber-300"
-                                  : "bg-sky-500/20 text-sky-300"
-                              }`}
-                            >
-                              {formatOfflineAdminReason(session.flagReason)}
-                            </span>
-                          )}
-                          {!session.terminatedReason && !session.flagReason && (
+                          ))}
+                          {incidentReasons.length === 0 && (
                             <span className="text-gray-600">—</span>
                           )}
                         </div>

@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { isOfflineSessionStale } from "@/lib/offline-problem-access";
 import { normalizeOfflineGatewayUrl } from "@/lib/offline-gateway";
-import { getOfflineAntiCheatCanaryImageUrl } from "@/lib/offline-anti-cheat-server";
+import { getOfflineProbeImageUrl } from "@/lib/offline-anti-cheat-server";
 
 export const dynamic = "force-dynamic";
 
@@ -65,8 +65,8 @@ export async function GET(
       status: "ready",
       problem: {
         ...problem,
-        antiCheatCanaryImageUrl:
-          session.flagReason ? undefined : getOfflineAntiCheatCanaryImageUrl() ?? undefined,
+        probeImageUrl:
+          session.flagReason ? undefined : getOfflineProbeImageUrl() ?? undefined,
       },
     });
   }
