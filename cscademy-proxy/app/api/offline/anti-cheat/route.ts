@@ -38,26 +38,17 @@ export async function POST(req: NextRequest) {
   }
 
   if (access.reason === "closed") {
-    return NextResponse.json({
-      status: "closed",
-      closedReason: access.session?.terminatedReason ?? OFFLINE_ANTI_CHEAT_REASON,
-    });
+    return new NextResponse(null, { status: 204 });
   }
 
   if (access.reason !== "active" || !access.session) {
-    return NextResponse.json(
-      { error: "Offline task is not active." },
-      { status: 409 }
-    );
+    return new NextResponse(null, { status: 204 });
   }
 
-  await convex.mutation(api.offlineProblemSessions.terminate, {
+  await convex.mutation(api.offlineProblemSessions.flag, {
     sessionId: access.session.sessionId,
     reason: OFFLINE_ANTI_CHEAT_REASON,
   });
 
-  return NextResponse.json({
-    status: "closed",
-    closedReason: OFFLINE_ANTI_CHEAT_REASON,
-  });
+  return new NextResponse(null, { status: 204 });
 }

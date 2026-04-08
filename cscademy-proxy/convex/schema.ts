@@ -57,6 +57,9 @@ export default defineSchema({
     lastHeartbeatAt: v.optional(v.number()),
     terminatedAt: v.optional(v.number()),
     terminatedReason: v.optional(v.string()),
+    flaggedAt: v.optional(v.number()),
+    flagReason: v.optional(v.string()),
+    flagCount: v.optional(v.number()),
   })
     .index("by_user_problem", ["userId", "trackSlug", "problemSlug"])
     .index("by_user_track", ["userId", "trackSlug"])

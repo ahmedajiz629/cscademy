@@ -218,24 +218,14 @@ export default function ProblemIDEPage() {
       }
 
       antiCheatTriggeredRef.current = true;
-      pendingCloseReasonRef.current = OFFLINE_ANTI_CHEAT_REASON;
       clearAntiCheatCanary();
-      setOfflineError("");
 
       void fetch("/api/offline/anti-cheat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
       }).catch(() => {
-        // Closing the WebSocket still forces the session shut if the report misses.
-      });
-
-      socketRef.current?.close();
-      socketRef.current = null;
-      setProblemState({
-        status: "closed",
-        problem: toOfflineProblemPreview(offlineProblem),
-        closedReason: OFFLINE_ANTI_CHEAT_REASON,
+        // Silent best-effort report. The participant should not see anything.
       });
     },
     [clearAntiCheatCanary, problemId, trackId]

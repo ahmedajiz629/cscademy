@@ -66,7 +66,7 @@ export async function GET(
       problem: {
         ...problem,
         antiCheatCanaryImageUrl:
-          getOfflineAntiCheatCanaryImageUrl() ?? undefined,
+          session.flagReason ? undefined : getOfflineAntiCheatCanaryImageUrl() ?? undefined,
       },
     });
   }

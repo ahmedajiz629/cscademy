@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import {
+  formatOfflineAdminReason,
+  OFFLINE_ANTI_CHEAT_REASON,
+} from "@/lib/offline-anti-cheat";
 
 interface UserForm {
   name: string;
@@ -27,17 +31,20 @@ const emptyForm: UserForm = {
 
 export default function AdminUsersPage() {
   const users = useQuery(api.users.list);
+  const offlineSessions = useQuery(api.offlineProblemSessions.listAll);
   const createUser = useMutation(api.users.create);
   const updateUser = useMutation(api.users.update);
   const removeUser = useMutation(api.users.remove);
   const upsertCsa = useMutation(api.csacademyAccounts.upsert);
   const removeCsa = useMutation(api.csacademyAccounts.remove);
+  const reopenOfflineSession = useMutation(api.offlineProblemSessions.reopen);
 
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<Id<"users"> | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [reopeningId, setReopeningId] = useState<Id<"offlineProblemSessions"> | null>(null);
 
   function openCreate() {
     setForm(emptyForm);
@@ -56,7 +63,7 @@ export default function AdminUsersPage() {
       csaEmail: "",
       csaPassword: "",
     });
-    setEditingId(user._id);
+    setEditingId(user._id as Id<"users">);
     setShowForm(true);
     setError("");
 
@@ -80,15 +87,18 @@ export default function AdminUsersPage() {
     setError("");
     try {
       let userId: Id<"users">;
+      const trimmedName = form.name.trim();
+      const trimmedEmail = form.email.trim();
+      const trimmedGateway = form.offlineGatewayUrl.trim();
 
       if (editingId) {
-        userId = editingId as Id<"users">;
+        userId = editingId;
         const updates: any = {
           id: userId,
-          name: form.name,
-          email: form.email,
+          name: trimmedName,
+          email: trimmedEmail,
           role: form.role,
-          offlineGatewayUrl: form.offlineGatewayUrl.trim() || undefined,
+          offlineGatewayUrl: trimmedGateway,
         };
         if (form.password) {
           // Hash password on server
@@ -116,11 +126,11 @@ export default function AdminUsersPage() {
         const hashData = await hashRes.json();
 
         userId = await createUser({
-          name: form.name,
-          email: form.email,
+          name: trimmedName,
+          email: trimmedEmail,
           passwordHash: hashData.hash,
           role: form.role,
-          offlineGatewayUrl: form.offlineGatewayUrl.trim() || undefined,
+          offlineGatewayUrl: trimmedGateway || undefined,
         });
       }
 
@@ -136,6 +146,8 @@ export default function AdminUsersPage() {
       }
 
       setShowForm(false);
+      setEditingId(null);
+      setForm(emptyForm);
     } catch (err: any) {
       setError(err.message || "Save failed");
     } finally {
@@ -143,14 +155,27 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: Id<"users">) {
     if (!confirm("Delete this user? This action cannot be undone.")) return;
     try {
-      await removeUser({ id: id as Id<"users"> });
+      await removeUser({ id });
     } catch (err: any) {
       alert(err.message);
     }
   }
+
+  async function handleReopenSession(id: Id<"offlineProblemSessions">) {
+    setReopeningId(id);
+    try {
+      await reopenOfflineSession({ id });
+    } catch (err: any) {
+      alert(err.message || "Failed to reopen offline task");
+    } finally {
+      setReopeningId(null);
+    }
+  }
+
+  const userNameById = new Map((users ?? []).map((user) => [user._id, user.name]));
 
   return (
     <div className="p-8">
@@ -268,7 +293,11 @@ export default function AdminUsersPage() {
 
             <div className="flex justify-end gap-2 mt-6">
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingId(null);
+                  setForm(emptyForm);
+                }}
                 className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
               >
                 Cancel
@@ -372,6 +401,135 @@ export default function AdminUsersPage() {
           </table>
         </div>
       )}
+
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Offline Task Sessions</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Admin-visible incident badges and manual reopen controls for closed tasks.
+            </p>
+          </div>
+        </div>
+
+        {!offlineSessions ? (
+          <div className="text-gray-400">Loading sessions...</div>
+        ) : offlineSessions.length === 0 ? (
+          <div className="text-gray-500 p-6 border border-gray-800 rounded-xl">
+            No offline task sessions yet.
+          </div>
+        ) : (
+          <div className="border border-gray-800 rounded-xl overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-[#111127] border-b border-gray-800">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                    Student
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                    Task
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                    Status
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                    Incident
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                    Updated
+                  </th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {offlineSessions.map((session) => {
+                  const isClosed = session.status === "terminated";
+                  const hasAntiCheatFlag = session.flagReason === OFFLINE_ANTI_CHEAT_REASON;
+                  return (
+                    <tr
+                      key={session._id}
+                      className="border-b border-gray-800/50 hover:bg-[#111127]/50"
+                    >
+                      <td className="px-4 py-3 text-sm text-white">
+                        {userNameById.get(session.userId) ?? "Unknown user"}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-400">
+                        <span className="font-mono text-xs text-gray-300">
+                          {session.trackSlug}/{session.problemSlug}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-400">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded ${
+                            isClosed
+                              ? "bg-red-500/20 text-red-300"
+                              : session.status === "active"
+                                ? "bg-green-500/20 text-green-300"
+                                : "bg-amber-500/20 text-amber-300"
+                          }`}
+                        >
+                          {isClosed
+                            ? "Closed"
+                            : session.status === "active"
+                              ? "Active"
+                              : "Pending"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-400">
+                        <div className="flex flex-wrap gap-2">
+                          {session.terminatedReason && (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded ${
+                                session.terminatedReason === OFFLINE_ANTI_CHEAT_REASON
+                                  ? "bg-amber-500/20 text-amber-300"
+                                  : "bg-red-500/20 text-red-300"
+                              }`}
+                            >
+                              {formatOfflineAdminReason(session.terminatedReason)}
+                            </span>
+                          )}
+                          {session.flagReason && !isClosed && (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded ${
+                                hasAntiCheatFlag
+                                  ? "bg-amber-500/20 text-amber-300"
+                                  : "bg-sky-500/20 text-sky-300"
+                              }`}
+                            >
+                              {formatOfflineAdminReason(session.flagReason)}
+                            </span>
+                          )}
+                          {!session.terminatedReason && !session.flagReason && (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {new Date(session.updatedAt).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isClosed ? (
+                          <button
+                            onClick={() => handleReopenSession(session._id)}
+                            disabled={reopeningId === session._id}
+                            className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white rounded-lg transition-colors"
+                          >
+                            {reopeningId === session._id ? "Reopening..." : "Reopen access"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-600">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

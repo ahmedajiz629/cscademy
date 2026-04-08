@@ -17,9 +17,23 @@ export function formatOfflineClosedReason(reason?: string) {
 
   switch (reason) {
     case "connection_lost":
-      return "connection lost";
     case OFFLINE_ANTI_CHEAT_REASON:
-      return "external internet access detected";
+      return "connection lost";
+    default:
+      return reason.replace(/_/g, " ");
+  }
+}
+
+export function formatOfflineAdminReason(reason?: string) {
+  if (!reason) {
+    return null;
+  }
+
+  switch (reason) {
+    case "connection_lost":
+      return "Connection lost";
+    case OFFLINE_ANTI_CHEAT_REASON:
+      return "Anti-cheat detected";
     default:
       return reason.replace(/_/g, " ");
   }

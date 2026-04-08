@@ -32,6 +32,13 @@ export const listByUserAndTrack = query({
   },
 });
 
+export const listAll = query({
+  handler: async (ctx) => {
+    const sessions = await ctx.db.query("offlineProblemSessions").collect();
+    return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+});
+
 export const prepareEntry = mutation({
   args: {
     userId: v.id("users"),
@@ -155,5 +162,59 @@ export const terminate = mutation({
     });
 
     return session._id;
+  },
+});
+
+export const flag = mutation({
+  args: {
+    sessionId: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { sessionId, reason }) => {
+    const session = await ctx.db
+      .query("offlineProblemSessions")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .first();
+
+    if (!session || session.status === "terminated") {
+      return null;
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(session._id, {
+      flaggedAt: now,
+      flagReason: reason ?? "anti_cheat_canary",
+      flagCount: (session.flagCount ?? 0) + 1,
+      updatedAt: now,
+    });
+
+    return session._id;
+  },
+});
+
+export const reopen = mutation({
+  args: {
+    id: v.id("offlineProblemSessions"),
+  },
+  handler: async (ctx, { id }) => {
+    const session = await ctx.db.get(id);
+
+    if (!session) {
+      throw new Error("Offline session not found.");
+    }
+
+    const now = Date.now();
+    await ctx.db.replace(id, {
+      userId: session.userId,
+      trackSlug: session.trackSlug,
+      problemSlug: session.problemSlug,
+      sessionId: session.sessionId,
+      gatewayUrl: session.gatewayUrl,
+      status: "pending",
+      createdAt: session.createdAt,
+      updatedAt: now,
+    });
+
+    return id;
   },
 });
