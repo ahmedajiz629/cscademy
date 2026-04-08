@@ -5,6 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { isOfflineSessionStale } from "@/lib/offline-problem-access";
 import { normalizeOfflineGatewayUrl } from "@/lib/offline-gateway";
+import { getOfflineAntiCheatCanaryImageUrl } from "@/lib/offline-anti-cheat-server";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,14 @@ export async function GET(
   }
 
   if (session?.status === "active") {
-    return NextResponse.json({ status: "ready", problem });
+    return NextResponse.json({
+      status: "ready",
+      problem: {
+        ...problem,
+        antiCheatCanaryImageUrl:
+          getOfflineAntiCheatCanaryImageUrl() ?? undefined,
+      },
+    });
   }
 
   return NextResponse.json({

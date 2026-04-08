@@ -47,6 +47,7 @@ npx convex dev
 # 3. Configure credentials (already in .env.local)
 # CSACADEMY_EMAIL=your@email.com
 # CSACADEMY_PASSWORD=your_password
+# OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL=https://static-check.example/icon.ico
 
 # 4. Run the development server
 npm run dev
@@ -124,6 +125,7 @@ npx convex dev
 # Creates a Convex project and gives you a deployment URL
 # Add to .env.local:
 # NEXT_PUBLIC_CONVEX_URL=https://your-project.convex.cloud
+# OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL=https://static-check.example/icon.ico
 ```
 
 Then seed problems:

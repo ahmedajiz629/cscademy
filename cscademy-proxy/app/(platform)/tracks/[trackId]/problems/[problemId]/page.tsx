@@ -7,6 +7,12 @@ import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { getTrack } from "@/lib/tracks";
+import {
+  buildOfflineAntiCheatCanaryUrl,
+  formatOfflineClosedReason,
+  OFFLINE_ANTI_CHEAT_REASON,
+  OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS,
+} from "@/lib/offline-anti-cheat";
 import OutputPanel from "@/components/OutputPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
@@ -27,6 +33,7 @@ interface ProblemDetails {
   sampleOutput?: string;
   starterCode?: string;
   isOffline?: boolean;
+  antiCheatCanaryImageUrl?: string;
 }
 
 interface OfflineProblemPreview {
@@ -50,6 +57,17 @@ type ProblemAccessState =
       gatewayUrl: string;
     }
   | { status: "ready"; problem: ProblemDetails };
+
+function toOfflineProblemPreview(
+  problem: Pick<ProblemDetails, "slug" | "name" | "points"> | OfflineProblemPreview
+): OfflineProblemPreview {
+  return {
+    slug: problem.slug,
+    name: problem.name,
+    points: problem.points,
+    isOffline: true,
+  };
+}
 
 export default function ProblemIDEPage() {
   const params = useParams();
@@ -78,6 +96,23 @@ export default function ProblemIDEPage() {
 
   const socketRef = useRef<WebSocket | null>(null);
   const offlineStartedRef = useRef(false);
+  const antiCheatRetryTimeoutRef = useRef<number | null>(null);
+  const antiCheatImageRef = useRef<HTMLImageElement | null>(null);
+  const pendingCloseReasonRef = useRef<string | null>(null);
+  const antiCheatTriggeredRef = useRef(false);
+
+  const clearAntiCheatCanary = useCallback(() => {
+    if (antiCheatRetryTimeoutRef.current !== null) {
+      window.clearTimeout(antiCheatRetryTimeoutRef.current);
+      antiCheatRetryTimeoutRef.current = null;
+    }
+
+    if (antiCheatImageRef.current) {
+      antiCheatImageRef.current.onload = null;
+      antiCheatImageRef.current.onerror = null;
+      antiCheatImageRef.current = null;
+    }
+  }, []);
 
   const loadProblem = useCallback(async () => {
     try {
@@ -128,15 +163,19 @@ export default function ProblemIDEPage() {
     setTestResults(null);
     setScore(null);
     setOfflineError("");
+    pendingCloseReasonRef.current = null;
+    antiCheatTriggeredRef.current = false;
+    clearAntiCheatCanary();
     void loadProblem();
-  }, [loadProblem]);
+  }, [clearAntiCheatCanary, loadProblem]);
 
   useEffect(() => {
     return () => {
+      clearAntiCheatCanary();
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, []);
+  }, [clearAntiCheatCanary]);
 
   const problem = problemState.status === "ready" ? problemState.problem : null;
   const defaultLangId = languages?.[0]?.langId || "1";
@@ -171,6 +210,107 @@ export default function ProblemIDEPage() {
 
   const currentLang = languages?.find((l) => l.langId === langId);
   const codemirrorLang = currentLang?.codemirrorMode || "cpp";
+
+  const reportAntiCheatDetection = useCallback(
+    (offlineProblem: ProblemDetails) => {
+      if (antiCheatTriggeredRef.current) {
+        return;
+      }
+
+      antiCheatTriggeredRef.current = true;
+      pendingCloseReasonRef.current = OFFLINE_ANTI_CHEAT_REASON;
+      clearAntiCheatCanary();
+      setOfflineError("");
+
+      void fetch("/api/offline/anti-cheat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
+      }).catch(() => {
+        // Closing the WebSocket still forces the session shut if the report misses.
+      });
+
+      socketRef.current?.close();
+      socketRef.current = null;
+      setProblemState({
+        status: "closed",
+        problem: toOfflineProblemPreview(offlineProblem),
+        closedReason: OFFLINE_ANTI_CHEAT_REASON,
+      });
+    },
+    [clearAntiCheatCanary, problemId, trackId]
+  );
+
+  useEffect(() => {
+    clearAntiCheatCanary();
+
+    if (
+      problemState.status !== "ready" ||
+      problemState.problem.isOffline !== true ||
+      !problemState.problem.antiCheatCanaryImageUrl ||
+      antiCheatTriggeredRef.current
+    ) {
+      return;
+    }
+
+    const offlineProblem = problemState.problem;
+    const canaryImageUrl = offlineProblem.antiCheatCanaryImageUrl;
+    if (!canaryImageUrl) {
+      return;
+    }
+
+    let cancelled = false;
+    let attempt = 0;
+
+    const scheduleRetry = () => {
+      antiCheatRetryTimeoutRef.current = window.setTimeout(() => {
+        antiCheatRetryTimeoutRef.current = null;
+        if (!cancelled) {
+          loadCanary();
+        }
+      }, OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS);
+    };
+
+    const loadCanary = () => {
+      if (cancelled || antiCheatTriggeredRef.current) {
+        return;
+      }
+
+      attempt += 1;
+      const image = new Image();
+      antiCheatImageRef.current = image;
+      image.decoding = "async";
+      image.referrerPolicy = "no-referrer";
+
+      image.onload = () => {
+        antiCheatImageRef.current = null;
+        if (!cancelled) {
+          reportAntiCheatDetection(offlineProblem);
+        }
+      };
+
+      image.onerror = () => {
+        if (antiCheatImageRef.current === image) {
+          antiCheatImageRef.current = null;
+        }
+        if (!cancelled) {
+          scheduleRetry();
+        }
+      };
+
+      image.src = buildOfflineAntiCheatCanaryUrl(
+        canaryImageUrl,
+        `${Date.now()}-${attempt}`
+      );
+    };
+
+    loadCanary();
+
+    return () => {
+      cancelled = true;
+      clearAntiCheatCanary();
+    };
+  }, [clearAntiCheatCanary, problemState, reportAntiCheatDetection]);
 
   const runCode = useCallback(async () => {
     if (!problem || !track) return;
@@ -273,6 +413,9 @@ export default function ProblemIDEPage() {
     setIsConnectingOffline(true);
     setOfflineError("");
     offlineStartedRef.current = false;
+    pendingCloseReasonRef.current = null;
+    antiCheatTriggeredRef.current = false;
+    clearAntiCheatCanary();
     socketRef.current?.close();
 
     try {
@@ -315,19 +458,21 @@ export default function ProblemIDEPage() {
 
       socket.addEventListener("close", () => {
         socketRef.current = null;
+        clearAntiCheatCanary();
         if (offlineStartedRef.current) {
+          const closedReason = pendingCloseReasonRef.current ?? "connection_lost";
+          pendingCloseReasonRef.current = null;
           setProblemState({
             status: "closed",
             problem:
               problemState.status === "offline_confirmation"
                 ? problemState.problem
-                : {
+                : toOfflineProblemPreview({
                     slug: problemId,
                     name: "Offline task",
                     points: 0,
-                    isOffline: true,
-                  },
-            closedReason: "connection_lost",
+                  }),
+            closedReason,
           });
         } else {
           setIsConnectingOffline(false);
@@ -340,7 +485,7 @@ export default function ProblemIDEPage() {
       setIsConnectingOffline(false);
       setOfflineError(err.message || "Failed to start offline task");
     }
-  }, [loadProblem, problemId, problemState, trackId]);
+  }, [clearAntiCheatCanary, loadProblem, problemId, problemState, trackId]);
 
   if (!track) {
     return (
@@ -399,7 +544,7 @@ export default function ProblemIDEPage() {
             </p>
             {problemState.closedReason && (
               <p className="text-xs uppercase tracking-wide text-red-300/80">
-                Reason: {problemState.closedReason}
+                Reason: {formatOfflineClosedReason(problemState.closedReason)}
               </p>
             )}
           </div>

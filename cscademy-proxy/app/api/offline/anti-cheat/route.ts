@@ -1,0 +1,63 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
+import { getConvexClient } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
+import { OFFLINE_ANTI_CHEAT_REASON } from "@/lib/offline-anti-cheat";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(req: NextRequest) {
+  const auth = await getAuthUser(req);
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { trackSlug, problemSlug } = await req.json();
+  if (!trackSlug || !problemSlug) {
+    return NextResponse.json(
+      { error: "trackSlug and problemSlug are required" },
+      { status: 400 }
+    );
+  }
+
+  const userId = auth.userId as Id<"users">;
+  const convex = getConvexClient();
+  const access = await getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug);
+
+  if (!access.problem) {
+    return NextResponse.json({ error: "Problem not found" }, { status: 404 });
+  }
+
+  if (access.problem.isOffline !== true) {
+    return NextResponse.json(
+      { error: "This problem is not LAN gated." },
+      { status: 400 }
+    );
+  }
+
+  if (access.reason === "closed") {
+    return NextResponse.json({
+      status: "closed",
+      closedReason: access.session?.terminatedReason ?? OFFLINE_ANTI_CHEAT_REASON,
+    });
+  }
+
+  if (access.reason !== "active" || !access.session) {
+    return NextResponse.json(
+      { error: "Offline task is not active." },
+      { status: 409 }
+    );
+  }
+
+  await convex.mutation(api.offlineProblemSessions.terminate, {
+    sessionId: access.session.sessionId,
+    reason: OFFLINE_ANTI_CHEAT_REASON,
+  });
+
+  return NextResponse.json({
+    status: "closed",
+    closedReason: OFFLINE_ANTI_CHEAT_REASON,
+  });
+}
