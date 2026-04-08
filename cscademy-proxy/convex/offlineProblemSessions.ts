@@ -220,6 +220,11 @@ export const reopen = mutation({
       status: "pending",
       createdAt: session.createdAt,
       updatedAt: now,
+      terminatedAt: session.terminatedAt,
+      terminatedReason: session.terminatedReason,
+      flaggedAt: session.flaggedAt,
+      flagReason: session.flagReason,
+      flagCount: session.flagCount,
     });
 
     return id;
