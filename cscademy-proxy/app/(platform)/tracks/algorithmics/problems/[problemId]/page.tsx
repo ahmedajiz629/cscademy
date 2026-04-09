@@ -557,7 +557,7 @@ export default function AlgorithmicsProblemIDEPage() {
       });
 
       socket.addEventListener("error", () => {
-        setOfflineError("Could not connect to the LAN gateway.");
+        setOfflineError("Could not connect to the local gateway.");
       });
 
       socket.addEventListener("close", () => {
@@ -580,7 +580,7 @@ export default function AlgorithmicsProblemIDEPage() {
         } else {
           setIsConnectingOffline(false);
           setOfflineError(
-            "Connection to the LAN gateway was lost before the task started."
+            "Connection to the local gateway was lost before the task started."
           );
         }
       });
@@ -635,7 +635,7 @@ export default function AlgorithmicsProblemIDEPage() {
               This offline task has been closed for your account.
             </p>
             <p>
-              Once the LAN WebSocket connection is lost, the task cannot be reopened and no further work can be submitted.
+              Once the local WebSocket connection is lost, the task cannot be reopened and no further work can be submitted.
             </p>
             {problemState.closedReason && (
               <p className="text-xs uppercase tracking-wide text-red-300/80">
@@ -674,7 +674,7 @@ export default function AlgorithmicsProblemIDEPage() {
 
           <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-100 space-y-3">
             <p>
-              This task only becomes visible after a live WebSocket connection is established with your assigned LAN gateway.
+              This task only becomes visible after a live WebSocket connection is established with your local gateway.
             </p>
             <p>
               Any lost connection immediately ends the task for you. Closing, refreshing, or leaving this page also counts as a disconnect.

@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 
 const DEFAULT_OFFLINE_GATEWAY_PORT = "8787";
+const DEFAULT_OFFLINE_GATEWAY_HOST = "127.0.0.1";
 const OFFLINE_GATEWAY_AUDIENCE = "offline-gateway";
 const OFFLINE_GATEWAY_ISSUER = "ajiz-tech-challenge";
 
@@ -45,35 +46,28 @@ export function normalizeOfflineGatewayUrl(rawValue: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
-export function resolveOfflineGatewayUrl(requestUrl: string | URL): string {
+function getDefaultOfflineGatewayUrl(port: string | undefined): string {
+  return normalizeOfflineGatewayUrl(
+    `ws://${DEFAULT_OFFLINE_GATEWAY_HOST}:${port || DEFAULT_OFFLINE_GATEWAY_PORT}`
+  );
+}
+
+export function resolveOfflineGatewayUrl(_requestUrl: string | URL): string {
   const configuredValue = process.env.OFFLINE_GATEWAY_URL?.trim();
   if (configuredValue) {
     return normalizeOfflineGatewayUrl(configuredValue);
   }
 
-  const sourceUrl = new URL(requestUrl.toString());
-  sourceUrl.protocol = sourceUrl.protocol === "https:" ? "wss:" : "ws:";
-  sourceUrl.port = process.env.OFFLINE_GATEWAY_PORT || DEFAULT_OFFLINE_GATEWAY_PORT;
-  sourceUrl.pathname = "";
-  sourceUrl.search = "";
-  sourceUrl.hash = "";
-  return normalizeOfflineGatewayUrl(sourceUrl.toString());
+  return getDefaultOfflineGatewayUrl(process.env.OFFLINE_GATEWAY_PORT);
 }
 
-export function resolveOfflineGatewayUrlInBrowser(currentUrl: string | URL): string {
+export function resolveOfflineGatewayUrlInBrowser(_currentUrl: string | URL): string {
   const configuredValue = process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_URL?.trim();
   if (configuredValue) {
     return normalizeOfflineGatewayUrl(configuredValue);
   }
 
-  const sourceUrl = new URL(currentUrl.toString());
-  sourceUrl.protocol = sourceUrl.protocol === "https:" ? "wss:" : "ws:";
-  sourceUrl.port =
-    process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_PORT || DEFAULT_OFFLINE_GATEWAY_PORT;
-  sourceUrl.pathname = "";
-  sourceUrl.search = "";
-  sourceUrl.hash = "";
-  return normalizeOfflineGatewayUrl(sourceUrl.toString());
+  return getDefaultOfflineGatewayUrl(process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_PORT);
 }
 
 export async function createOfflineGatewayToken(

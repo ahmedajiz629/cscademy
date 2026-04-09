@@ -39,7 +39,7 @@ The project expects these environment variables:
 - `NEXT_PUBLIC_CONVEX_URL`
 - `JWT_SECRET`
 - `OFFLINE_GATEWAY_SECRET` or `JWT_SECRET`
-- `OFFLINE_GATEWAY_URL` or `OFFLINE_GATEWAY_PORT`
+- `OFFLINE_GATEWAY_URL` or `OFFLINE_GATEWAY_PORT` (defaults to `ws://127.0.0.1:8787`)
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 
 Docker must also be installed on the server for software engineering track evaluations.
@@ -50,7 +50,7 @@ External evaluation account credentials are linked per user from the admin inter
 
 - App Router handles the web UI and internal API routes.
 - Convex stores users, track settings, problems, languages, scores, and offline session state.
-- The offline gateway maintains live LAN presence for offline tasks.
+- The offline gateway is expected to run locally for offline tasks and maintains their live presence.
 - The algorithmics track currently uses the external judge integration for run and submit actions.
 - The software engineering track evaluates repository branches by running configured Docker images against student submissions.
 

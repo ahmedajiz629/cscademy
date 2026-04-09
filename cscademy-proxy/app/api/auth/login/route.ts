@@ -5,6 +5,10 @@ import { api } from "@/convex/_generated/api";
 
 export async function POST(req: NextRequest) {
   try {
+    const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const isSecureRequest =
+      forwardedProto === "https" || req.nextUrl.protocol === "https:";
+
     const { email, password } = await req.json();
     if (!email || !password) {
       return NextResponse.json(
@@ -49,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     res.cookies.set("auth-token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isSecureRequest,
       sameSite: "lax",
       maxAge: 60 * 60 * 24, // 24h
       path: "/",
