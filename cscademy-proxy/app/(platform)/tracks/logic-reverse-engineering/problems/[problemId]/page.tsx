@@ -33,6 +33,7 @@ interface ProblemDetails {
   description: string;
   points: number;
   judgeFilePath?: string;
+  evaluationImage?: string;
   starterSubmission?: string;
 }
 
@@ -46,7 +47,21 @@ interface EvaluationResult {
 }
 
 function normalizeJudgeDownloadHref(rawValue?: string): string {
-  const value = rawValue?.trim() || "/test.ts";
+  const value = rawValue?.trim();
+
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.toString();
+    }
+  } catch {
+    // Fall through to the relative-path normalization below.
+  }
+
   return value.startsWith("/") ? value : `/${value}`;
 }
 
@@ -54,7 +69,7 @@ function buildOutputText(result: EvaluationResult): string {
   const summary = [
     `Status: ${result.status.toUpperCase()}`,
     `Score: ${formatScore(result.score)}`,
-    `Judge File: ${result.judgeFilePath}`,
+    `Judge Source: ${result.judgeFilePath}`,
   ];
 
   if (result.reason) {
@@ -186,6 +201,7 @@ export default function LogicReverseEngineeringProblemPage() {
 
   const bestScore = scoreRecord?.score ?? null;
   const judgeDownloadHref = normalizeJudgeDownloadHref(problem.judgeFilePath);
+  const isExternalJudgeSource = /^https?:\/\//i.test(judgeDownloadHref);
   const canEvaluate = submission.trim().length > 0;
 
   return (
@@ -209,7 +225,7 @@ export default function LogicReverseEngineeringProblemPage() {
                 </p>
                 <h1 className="text-3xl font-bold text-white">{problem.name}</h1>
                 <p className="mt-2 text-sm text-gray-400">
-                  Submit a single expression string. The downloadable judge file is the source of truth.
+                  Submit a single expression string. The judge source below is the source of truth.
                 </p>
               </div>
               <div className="text-right">
@@ -227,22 +243,26 @@ export default function LogicReverseEngineeringProblemPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <p className="mb-2 text-xs uppercase tracking-[0.2em] text-cyan-300">
-                    Downloadable Judge
+                    Judge Source
                   </p>
                   <p className="break-all text-sm font-medium text-white">
-                    {judgeDownloadHref}
+                    {judgeDownloadHref || "Not configured"}
                   </p>
                 </div>
-                <a
-                  href={judgeDownloadHref}
-                  download
-                  className="inline-flex items-center rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/20"
-                >
-                  Download Judge
-                </a>
+                {judgeDownloadHref ? (
+                  <a
+                    href={judgeDownloadHref}
+                    {...(isExternalJudgeSource
+                      ? { target: "_blank", rel: "noreferrer" }
+                      : { download: true })}
+                    className="inline-flex items-center rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:bg-cyan-400/20"
+                  >
+                    {isExternalJudgeSource ? "Open Judge URL" : "Download Judge"}
+                  </a>
+                ) : null}
               </div>
               <p className="mt-4 text-xs text-gray-400">
-                The platform runs this same judge inside a Node.js Docker container and grants full points only when the final line is <code>{'{"ok":true}'}</code>.
+                The platform copies this judge into the configured Docker image, runs the configured evaluation command, and grants full points only when the final line is <code>{'{"ok":true}'}</code>.
               </p>
             </div>
 
@@ -255,7 +275,10 @@ export default function LogicReverseEngineeringProblemPage() {
 
           <div className="grid gap-4 md:grid-cols-3">
             <InfoCard label="Submission Type" value="Single string expression" />
-            <InfoCard label="Judge Runtime" value="Node.js in Docker" />
+            <InfoCard
+              label="Judge Runtime"
+              value={problem.evaluationImage || "Configured Docker image"}
+            />
             <InfoCard label="Passing Signal" value='{"ok":true}' />
           </div>
         </section>
@@ -297,7 +320,7 @@ export default function LogicReverseEngineeringProblemPage() {
                   tone={result.status === "passed" ? "green" : "red"}
                 />
                 <StatusRow label="Score" value={formatScore(result.score)} />
-                <StatusRow label="Judge File" value={result.judgeFilePath} />
+                <StatusRow label="Judge Source" value={result.judgeFilePath} />
                 <StatusRow label="Reason" value={result.reason || "—"} />
               </div>
             ) : (
@@ -312,7 +335,7 @@ export default function LogicReverseEngineeringProblemPage() {
               output={output}
               isError={isError}
               isLoading={isEvaluating}
-              loadingText="Running Node.js judge inside Docker..."
+              loadingText="Running configured Docker evaluation..."
             />
           </div>
         </section>

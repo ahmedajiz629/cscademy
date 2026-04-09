@@ -6,9 +6,67 @@
  */
 import { ConvexHttpClient } from "convex/browser";
 import bcrypt from "bcryptjs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
+
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+const shellEnvKeys = new Set(Object.keys(process.env));
+
+function decodeEnvValue(rawValue) {
+  const trimmed = rawValue.trim();
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    const unwrapped = trimmed.slice(1, -1);
+    return trimmed.startsWith('"')
+      ? unwrapped
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "\r")
+          .replace(/\\t/g, "\t")
+          .replace(/\\"/g, '"')
+      : unwrapped;
+  }
+
+  return trimmed;
+}
+
+function loadEnvFile(filePath) {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  const source = readFileSync(filePath, "utf8");
+  for (const line of source.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) {
+      continue;
+    }
+
+    const [, key, rawValue] = match;
+    if (shellEnvKeys.has(key)) {
+      continue;
+    }
+
+    process.env[key] = decodeEnvValue(rawValue);
+  }
+}
+
+loadEnvFile(resolve(PROJECT_ROOT, ".env"));
+loadEnvFile(resolve(PROJECT_ROOT, ".env.local"));
 
 const CONVEX_URL =
-  process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
+  process.env.CONVEX_URL ||
+  process.env.NEXT_PUBLIC_CONVEX_URL ||
+  "http://127.0.0.1:3210";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
@@ -237,25 +295,54 @@ Result rules
     },
     {
       trackSlug: "logic-reverse-engineering",
-      slug: "hardest-logic-puzzle",
-      name: "Hardest Logic Puzzle",
+      slug: "logic-puzzle",
+      name: "Logic Puzzle",
       description: `Download the public judge file and submit a single JavaScript expression string.
 
 Evaluation flow
 1. Download the judge file for this challenge.
 2. Reverse engineer the accepted expression format from the file itself.
 3. Submit only the expression string, not a full program.
-4. The platform runs the same judge inside an isolated Node.js Docker container.
+4. The platform fetches the same judge source and runs it inside the configured Docker evaluation.
 
 Scoring rule
 - If the final judge output is {"ok":true}, you receive the full score.
 - Any other output or runtime failure scores 0.` ,
       points: 100,
       order: 1,
-      judgeFilePath: "/test.ts",
+      judgeFilePath: "/hlqpz.ts",
+      evaluationImage: "node:22-alpine",
+      evaluationCommand: 'node "$LOGIC_REVERSE_ENGINEERING_RUNNER_FILE"',
       starterSubmission: "",
     },
   ];
+}
+
+function isExtraFieldValidationError(error, fieldName) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(`extra field \`${fieldName}\``);
+}
+
+async function createProblem(problem) {
+  try {
+    await client.mutation("trackProblems:create", problem);
+    console.log(`✓ Problem "${problem.name}" created`);
+  } catch (error) {
+    if (
+      problem.trackSlug === "logic-reverse-engineering" &&
+      Object.prototype.hasOwnProperty.call(problem, "evaluationCommand") &&
+      isExtraFieldValidationError(error, "evaluationCommand")
+    ) {
+      const { evaluationCommand, ...legacyProblem } = problem;
+      await client.mutation("trackProblems:create", legacyProblem);
+      console.log(
+        `✓ Problem "${problem.name}" created (without evaluationCommand for legacy backend validator)`
+      );
+      return;
+    }
+
+    throw error;
+  }
 }
 
 // ── Main seed function ─────────────────────────────────────────
@@ -361,8 +448,7 @@ async function seed() {
   // 6. Seed problems for the algorithmics track
   const problems = getProblems(starterCodeJson);
   for (const p of problems) {
-    await client.mutation("trackProblems:create", p);
-    console.log(`✓ Problem "${p.name}" created`);
+    await createProblem(p);
   }
 
   console.log("\n=== Seed complete ===");

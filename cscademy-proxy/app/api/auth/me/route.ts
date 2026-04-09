@@ -16,7 +16,12 @@ export async function GET(req: NextRequest) {
   });
 
   if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const res = NextResponse.json(
+      { error: "Not authenticated" },
+      { status: 401 }
+    );
+    res.cookies.delete("auth-token");
+    return res;
   }
 
   return NextResponse.json({

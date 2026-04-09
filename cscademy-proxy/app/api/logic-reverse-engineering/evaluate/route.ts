@@ -64,6 +64,8 @@ export async function POST(req: NextRequest) {
     const result = await runLogicReverseEngineeringEvaluation({
       submission,
       judgeFilePath: problem.judgeFilePath,
+      image: problem.evaluationImage,
+      command: problem.evaluationCommand,
     });
 
     const score = result.status === "passed" ? problem.points : 0;

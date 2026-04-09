@@ -6,7 +6,7 @@ Ajiz Tech Challenge is a track-based programming challenge platform built with N
 
 - Track-based challenge delivery with per-problem scoring.
 - Repository-based software engineering challenges evaluated through Docker runners.
-- Logic and reverse engineering challenges that evaluate a submitted string against a downloadable Node.js judge.
+- Logic and reverse engineering challenges that evaluate a submitted string against a downloadable judge source using a configurable Docker image and command.
 - Admin tools for users, tracks, languages, and problem configuration.
 - Offline tasks gated by an offline-room live connection.
 - Incident tracking and silent anti-cheat reporting for offline sessions.
@@ -50,7 +50,12 @@ to the same-origin Convex proxy path, for example
 `https://tech.ajiz.org/convex`, while keeping `CONVEX_INTERNAL_URL` pointed at
 the private backend such as `http://127.0.0.1:3210`.
 
-Docker must also be installed on the server for software engineering track evaluations.
+Docker must also be installed on the server for software engineering and logic/reverse-engineering evaluations.
+
+Optional evaluator defaults:
+
+- `LOGIC_REVERSE_ENGINEERING_DOCKER_IMAGE`
+- `LOGIC_REVERSE_ENGINEERING_EVALUATION_COMMAND`
 
 External evaluation account credentials are linked per user from the admin interface.
 
@@ -63,7 +68,7 @@ External evaluation account credentials are linked per user from the admin inter
 - Offline tasks should be opened from the offline room HTTP entrypoint; the gateway uses the same host as the page and only changes the port.
 - The algorithmics track currently uses the external judge integration for run and submit actions.
 - The software engineering track evaluates repository branches by running configured Docker images against student submissions.
-- The logic and reverse engineering track evaluates a submitted string by running a public judge file inside a Node.js Docker container.
+- The logic and reverse engineering track evaluates a submitted string by fetching a configured judge URL or public path, copying it into a Docker container, and running a configurable command inside that container.
 
 ## Seeding and Tooling
 

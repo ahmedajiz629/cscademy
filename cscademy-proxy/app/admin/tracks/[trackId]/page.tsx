@@ -24,6 +24,7 @@ type Problem = {
   isOffline?: boolean;
   publicRepositoryUrl?: string;
   evaluationImage?: string;
+  evaluationCommand?: string;
   baseCommit?: string;
   defaultSubmissionRef?: string;
   judgeFilePath?: string;
@@ -42,9 +43,10 @@ const EMPTY_FORM = {
   referer: "",
   publicRepositoryUrl: "",
   evaluationImage: "",
+  evaluationCommand: "",
   baseCommit: "",
   defaultSubmissionRef: "challenge",
-  judgeFilePath: "/test.ts",
+  judgeFilePath: "",
   starterSubmission: "",
   isOffline: false,
 };
@@ -82,7 +84,11 @@ export default function AdminTrackDetailPage() {
     (!isSoftwareEngineeringTrack ||
       (!!form.publicRepositoryUrl.trim() &&
         !!form.evaluationImage.trim() &&
-        !!form.baseCommit.trim()));
+        !!form.baseCommit.trim())) &&
+    (!isLogicReverseEngineeringTrack ||
+      (!!form.judgeFilePath.trim() &&
+        !!form.evaluationImage.trim() &&
+        !!form.evaluationCommand.trim()));
 
   const isActive = settings !== undefined
     ? (settings?.isActive ?? (track?.isActive ?? true))
@@ -99,7 +105,6 @@ export default function AdminTrackDetailPage() {
       order: nextOrder,
       points: isSoftwareEngineeringTrack ? 20 : EMPTY_FORM.points,
       defaultSubmissionRef: isSoftwareEngineeringTrack ? "challenge" : "",
-      judgeFilePath: isLogicReverseEngineeringTrack ? "/test.ts" : "",
       starterSubmission: "",
     });
     setEditingId(null);
@@ -119,9 +124,10 @@ export default function AdminTrackDetailPage() {
       referer: p.referer ?? "",
       publicRepositoryUrl: p.publicRepositoryUrl ?? "",
       evaluationImage: p.evaluationImage ?? "",
+      evaluationCommand: p.evaluationCommand ?? "",
       baseCommit: p.baseCommit ?? "",
       defaultSubmissionRef: p.defaultSubmissionRef ?? "challenge",
-      judgeFilePath: p.judgeFilePath ?? "/test.ts",
+      judgeFilePath: p.judgeFilePath ?? "",
       starterSubmission: p.starterSubmission ?? "",
       isOffline: p.isOffline ?? false,
     });
@@ -146,8 +152,12 @@ export default function AdminTrackDetailPage() {
       const publicRepositoryUrl = isSoftwareEngineeringTrack
         ? form.publicRepositoryUrl.trim() || undefined
         : undefined;
-      const evaluationImage = isSoftwareEngineeringTrack
+      const evaluationImage =
+        isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
         ? form.evaluationImage.trim() || undefined
+        : undefined;
+      const evaluationCommand = isLogicReverseEngineeringTrack
+        ? form.evaluationCommand.trim() || undefined
         : undefined;
       const baseCommit = isSoftwareEngineeringTrack
         ? form.baseCommit.trim() || undefined
@@ -183,14 +193,12 @@ export default function AdminTrackDetailPage() {
               : form.referer || undefined,
           publicRepositoryUrl,
           evaluationImage,
+          evaluationCommand,
           baseCommit,
           defaultSubmissionRef,
           judgeFilePath,
           starterSubmission,
-          isOffline:
-            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
-              ? false
-              : form.isOffline,
+          isOffline: form.isOffline,
         });
       } else if (mode === "edit" && editingId) {
         await updateProblem({
@@ -212,14 +220,12 @@ export default function AdminTrackDetailPage() {
               : form.referer || undefined,
           publicRepositoryUrl,
           evaluationImage,
+          evaluationCommand,
           baseCommit,
           defaultSubmissionRef,
           judgeFilePath,
           starterSubmission,
-          isOffline:
-            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
-              ? false
-              : form.isOffline,
+          isOffline: form.isOffline,
         });
       }
       setMode("view");
@@ -303,7 +309,7 @@ export default function AdminTrackDetailPage() {
           </p>
         ) : isLogicReverseEngineeringTrack ? (
           <p className="text-sm text-gray-300">
-            Students submit a single string expression that is checked by a downloadable Node.js judge running inside Docker.
+            Students submit a single string expression that is checked by a downloadable judge using the configured Docker image and command.
           </p>
         ) : languages ? (
           <p className="text-sm text-gray-300">{languages.map((l) => l.name).join(", ")}</p>
@@ -382,25 +388,23 @@ export default function AdminTrackDetailPage() {
                 className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
-            {!isSoftwareEngineeringTrack && !isLogicReverseEngineeringTrack && (
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
-                  className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
-                    form.isOffline
-                      ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-                      : "bg-gray-800 border-gray-700 text-gray-200"
-                  }`}
-                >
-                  <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
-                  <span className="text-xs uppercase tracking-wide">
-                    {form.isOffline ? "Offline" : "Online"}
-                  </span>
-                </button>
-              </div>
-            )}
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
+                  form.isOffline
+                    ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+                    : "bg-gray-800 border-gray-700 text-gray-200"
+                }`}
+              >
+                <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
+                <span className="text-xs uppercase tracking-wide">
+                  {form.isOffline ? "Offline" : "Online"}
+                </span>
+              </button>
+            </div>
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1">Description</label>
               <textarea
@@ -460,12 +464,30 @@ export default function AdminTrackDetailPage() {
             ) : isLogicReverseEngineeringTrack ? (
               <>
                 <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs text-gray-400 mb-1">Judge File Path</label>
+                  <label className="block text-xs text-gray-400 mb-1">Judge URL / Public Path</label>
                   <input
                     value={form.judgeFilePath}
                     onChange={(e) => setForm({ ...form, judgeFilePath: e.target.value })}
                     className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                    placeholder="/test.ts"
+                    placeholder="/test.ts or https://example.com/judges/test.ts"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Docker Image</label>
+                  <input
+                    value={form.evaluationImage}
+                    onChange={(e) => setForm({ ...form, evaluationImage: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="node:22-alpine"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Evaluation Command</label>
+                  <input
+                    value={form.evaluationCommand}
+                    onChange={(e) => setForm({ ...form, evaluationCommand: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    placeholder='node "$LOGIC_REVERSE_ENGINEERING_RUNNER_FILE"'
                   />
                 </div>
                 <div className="col-span-2">
@@ -482,7 +504,7 @@ export default function AdminTrackDetailPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-gray-500">
-                    The judge file is served from public/ and is downloadable by students. The platform runs that same file in Docker and awards full points only when the final JSON line contains ok=true.
+                    The judge source can be a public path or an external HTTP(S) URL. The configured command runs inside Docker after the platform copies the judge, runner, and submission files into the container. Available env vars include LOGIC_REVERSE_ENGINEERING_JUDGE_FILE, LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE, and LOGIC_REVERSE_ENGINEERING_RUNNER_FILE.
                   </p>
                 </div>
               </>
@@ -563,7 +585,7 @@ export default function AdminTrackDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Slug</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Mode</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  {isLogicReverseEngineeringTrack ? "Judge File" : "Task ID"}
+                  {isLogicReverseEngineeringTrack ? "Judge Source" : "Task ID"}
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active</th>
@@ -589,7 +611,7 @@ export default function AdminTrackDetailPage() {
                       {p.isOffline ? "Offline" : "Online"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-400 font-mono">
+                  <td className="px-4 py-3 text-sm text-gray-400 font-mono break-all">
                     {isLogicReverseEngineeringTrack
                       ? p.judgeFilePath ?? "—"
                       : p.contestTaskId ?? "—"}

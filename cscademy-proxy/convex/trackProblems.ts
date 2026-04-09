@@ -115,6 +115,8 @@ async function upsertLogicReverseEngineeringConfig(
   problemId: Id<"trackProblems">,
   fields: {
     judgeFilePath?: string;
+    evaluationImage?: string;
+    evaluationCommand?: string;
     starterSubmission?: string;
   }
 ) {
@@ -179,6 +181,7 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
     baseCommit: undefined as string | undefined,
     defaultSubmissionRef: undefined as string | undefined,
     judgeFilePath: undefined as string | undefined,
+    evaluationCommand: undefined as string | undefined,
     starterSubmission: undefined as string | undefined,
     isOffline: problem.isOffline ?? false,
   };
@@ -205,7 +208,6 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
       evaluationImage: config?.evaluationImage,
       baseCommit: config?.baseCommit,
       defaultSubmissionRef: config?.defaultSubmissionRef,
-      isOffline: false,
     };
   }
 
@@ -218,8 +220,9 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
     return {
       ...sharedShape,
       judgeFilePath: config?.judgeFilePath,
+      evaluationImage: config?.evaluationImage,
+      evaluationCommand: config?.evaluationCommand,
       starterSubmission: config?.starterSubmission,
-      isOffline: false,
     };
   }
 
@@ -307,6 +310,7 @@ export const create = mutation({
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
     judgeFilePath: v.optional(v.string()),
+    evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
@@ -356,6 +360,8 @@ export const create = mutation({
     if (args.trackSlug === "logic-reverse-engineering") {
       await upsertLogicReverseEngineeringConfig(ctx, problemId, {
         judgeFilePath: args.judgeFilePath,
+        evaluationImage: args.evaluationImage,
+        evaluationCommand: args.evaluationCommand,
         starterSubmission: args.starterSubmission,
       });
     }
@@ -381,6 +387,7 @@ export const update = mutation({
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
     judgeFilePath: v.optional(v.string()),
+    evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
@@ -425,6 +432,8 @@ export const update = mutation({
     if (problem.trackSlug === "logic-reverse-engineering") {
       await upsertLogicReverseEngineeringConfig(ctx, id, {
         judgeFilePath: fields.judgeFilePath,
+        evaluationImage: fields.evaluationImage,
+        evaluationCommand: fields.evaluationCommand,
         starterSubmission: fields.starterSubmission,
       });
     }

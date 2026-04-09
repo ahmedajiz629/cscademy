@@ -1,14 +1,17 @@
 import { spawn } from "child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, extname, join, resolve, sep } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import * as ts from "typescript";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_LOG_CHARS = 50_000;
 const DEFAULT_DOCKER_BIN = "docker";
-const DEFAULT_DOCKER_IMAGE = "node:22-alpine";
-const DEFAULT_JUDGE_FILE_PATH = "/test.ts";
+const CONTAINER_WORKDIR = "/workspace";
+const CONTAINER_KEEPALIVE_COMMAND =
+  'trap "exit 0" TERM INT; while :; do sleep 3600; done';
+const SUBMISSION_FILE_NAME = "submission.txt";
+const RUNNER_FILE_NAME = "runner.js";
 
 export class LogicReverseEngineeringValidationError extends Error {}
 
@@ -16,6 +19,7 @@ export interface LogicReverseEngineeringEvaluationConfig {
   submission: string;
   judgeFilePath?: string;
   image?: string;
+  command?: string;
   timeoutMs?: number;
 }
 
@@ -30,12 +34,26 @@ export interface LogicReverseEngineeringEvaluationResult {
 interface PreparedWorkspace {
   workspaceDir: string;
   judgeFilePath: string;
+  entryFileName: string;
 }
 
 interface ParsedEvaluationResult {
   status: "passed" | "failed";
   reason?: string;
   lastLine: string;
+}
+
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  timedOut: boolean;
+}
+
+interface JudgeSourceDescriptor {
+  displayValue: string;
+  sourcePath: string;
+  isRemote: boolean;
 }
 
 function truncateLogs(logs: string): string {
@@ -57,23 +75,63 @@ function getLastNonEmptyLine(logs: string): string {
   return lines.at(-1) ?? "";
 }
 
-function normalizeJudgeFilePath(rawValue?: string): string {
-  const value = (rawValue?.trim() || DEFAULT_JUDGE_FILE_PATH).replace(/\\/g, "/");
-  const nextValue = value.startsWith("/") ? value : `/${value}`;
+function parseHttpUrl(rawValue: string): URL | null {
+  try {
+    const url = new URL(rawValue);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new LogicReverseEngineeringValidationError(
+        "Judge source URL must use HTTP or HTTPS."
+      );
+    }
 
-  if (nextValue.includes("..")) {
+    return url;
+  } catch (error) {
+    if (error instanceof LogicReverseEngineeringValidationError) {
+      throw error;
+    }
+
+    return null;
+  }
+}
+
+function normalizeJudgeFilePath(rawValue?: string): JudgeSourceDescriptor {
+  const value = rawValue?.trim();
+
+  if (!value) {
+    throw new LogicReverseEngineeringValidationError(
+      "Judge source URL or public path is required."
+    );
+  }
+
+  const remoteUrl = parseHttpUrl(value);
+  if (remoteUrl) {
+    return {
+      displayValue: remoteUrl.toString(),
+      sourcePath: remoteUrl.toString(),
+      isRemote: true,
+    };
+  }
+
+  if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(value) || value.includes("://")) {
+    throw new LogicReverseEngineeringValidationError(
+      "Judge source URL must be a valid HTTP or HTTPS URL."
+    );
+  }
+
+  const nextValue = value.replace(/\\/g, "/");
+  const normalizedPath = nextValue.startsWith("/") ? nextValue : `/${nextValue}`;
+
+  if (normalizedPath.includes("..")) {
     throw new LogicReverseEngineeringValidationError(
       "Judge file path must stay inside the public directory."
     );
   }
 
-  if (!/\.(ts|js)$/i.test(nextValue)) {
-    throw new LogicReverseEngineeringValidationError(
-      "Judge file path must point to a .ts or .js file."
-    );
-  }
-
-  return nextValue;
+  return {
+    displayValue: normalizedPath,
+    sourcePath: normalizedPath,
+    isRemote: false,
+  };
 }
 
 function getJudgeAbsolutePath(judgeFilePath: string): string {
@@ -89,12 +147,18 @@ function getJudgeAbsolutePath(judgeFilePath: string): string {
   return absolutePath;
 }
 
-function createRunnerSource(entryFileName: string): string {
+function createRunnerSource(): string {
   return [
     'const { readFileSync } = require("node:fs");',
     'const { spawnSync } = require("node:child_process");',
-    'const submission = readFileSync("/workspace/submission.txt", "utf8");',
-    `const result = spawnSync(process.execPath, ["/workspace/${entryFileName}", submission], { stdio: "inherit" });`,
+    'const judgeFile = process.env.LOGIC_REVERSE_ENGINEERING_JUDGE_FILE;',
+    'const submissionFile = process.env.LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE;',
+    'if (!judgeFile || !submissionFile) {',
+    '  console.error("Logic evaluator is missing judge or submission file configuration.");',
+    '  process.exit(1);',
+    '}',
+    'const submission = readFileSync(submissionFile, "utf8");',
+    'const result = spawnSync(process.execPath, [judgeFile, submission], { stdio: "inherit" });',
     'if (result.error) {',
     '  console.error(result.error);',
     '  process.exit(1);',
@@ -103,45 +167,84 @@ function createRunnerSource(entryFileName: string): string {
   ].join("\n");
 }
 
+function sanitizeBaseName(rawValue: string): string {
+  const fileName = basename(rawValue).replace(/[^A-Za-z0-9._-]+/g, "-");
+  const trimmed = fileName.replace(/^[-.]+|[-.]+$/g, "");
+  const withoutExtension = trimmed.replace(/\.[^.]+$/, "");
+
+  return withoutExtension || "judge";
+}
+
+function buildEntryFileName(judgeFilePath: string): string {
+  let fileNameSource = judgeFilePath;
+
+  const remoteUrl = parseHttpUrl(judgeFilePath);
+  if (remoteUrl) {
+    fileNameSource = remoteUrl.pathname || "judge";
+  }
+
+  return `${sanitizeBaseName(fileNameSource)}.js`;
+}
+
+async function loadJudgeSource(judgeSource: JudgeSourceDescriptor): Promise<string> {
+  if (!judgeSource.isRemote) {
+    const absoluteJudgePath = getJudgeAbsolutePath(judgeSource.sourcePath);
+
+    try {
+      return await readFile(absoluteJudgePath, "utf8");
+    } catch (error: any) {
+      if (error?.code === "ENOENT") {
+        throw new LogicReverseEngineeringValidationError(
+          `Judge file ${judgeSource.displayValue} was not found in public/.`
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  const response = await fetch(judgeSource.sourcePath, { cache: "no-store" });
+  if (!response.ok) {
+    throw new LogicReverseEngineeringValidationError(
+      `Judge URL ${judgeSource.displayValue} returned ${response.status} ${response.statusText}.`
+    );
+  }
+
+  return await response.text();
+}
+
+function compileJudgeSource(source: string): string {
+  return ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      allowJs: true,
+    },
+  }).outputText;
+}
+
 async function prepareWorkspace(
   submission: string,
   rawJudgeFilePath?: string
 ): Promise<PreparedWorkspace> {
-  const judgeFilePath = normalizeJudgeFilePath(rawJudgeFilePath);
-  const absoluteJudgePath = getJudgeAbsolutePath(judgeFilePath);
-
-  let source: string;
-  try {
-    source = await readFile(absoluteJudgePath, "utf8");
-  } catch (error: any) {
-    if (error?.code === "ENOENT") {
-      throw new LogicReverseEngineeringValidationError(
-        `Judge file ${judgeFilePath} was not found in public/.`
-      );
-    }
-
-    throw error;
-  }
+  const judgeSource = normalizeJudgeFilePath(rawJudgeFilePath);
+  const source = await loadJudgeSource(judgeSource);
 
   const workspaceDir = await mkdtemp(join(tmpdir(), "logic-re-judge-"));
-  const entryFileName = `${basename(judgeFilePath, extname(judgeFilePath))}.js`;
-  const compiledSource =
-    extname(judgeFilePath).toLowerCase() === ".ts"
-      ? ts.transpileModule(source, {
-          compilerOptions: {
-            module: ts.ModuleKind.CommonJS,
-            target: ts.ScriptTarget.ES2020,
-          },
-        }).outputText
-      : source;
+  const entryFileName = buildEntryFileName(judgeSource.displayValue);
+  const compiledSource = compileJudgeSource(source);
 
   await Promise.all([
     writeFile(join(workspaceDir, entryFileName), compiledSource, "utf8"),
-    writeFile(join(workspaceDir, "submission.txt"), submission, "utf8"),
-    writeFile(join(workspaceDir, "runner.js"), createRunnerSource(entryFileName), "utf8"),
+    writeFile(join(workspaceDir, SUBMISSION_FILE_NAME), submission, "utf8"),
+    writeFile(join(workspaceDir, RUNNER_FILE_NAME), createRunnerSource(), "utf8"),
   ]);
 
-  return { workspaceDir, judgeFilePath };
+  return {
+    workspaceDir,
+    judgeFilePath: judgeSource.displayValue,
+    entryFileName,
+  };
 }
 
 function parseEvaluationResult(
@@ -200,8 +303,168 @@ function parseEvaluationResult(
   };
 }
 
-function formatDockerVolume(workspaceDir: string): string {
-  return `${workspaceDir.replace(/\\/g, "/")}:/workspace:ro`;
+function formatCommandFailure(action: string, result: CommandResult): string {
+  const details = truncateLogs([result.stdout, result.stderr].filter(Boolean).join(""));
+  return details
+    ? `${action}\n${details}`
+    : `${action} Docker exited with code ${result.exitCode ?? "unknown"}.`;
+}
+
+function getRequiredImage(config: LogicReverseEngineeringEvaluationConfig): string {
+  const image =
+    config.image?.trim() ||
+    process.env.LOGIC_REVERSE_ENGINEERING_DOCKER_IMAGE?.trim();
+
+  if (!image) {
+    throw new LogicReverseEngineeringValidationError(
+      "A Docker image must be configured for this logic evaluation."
+    );
+  }
+
+  return image;
+}
+
+function getRequiredCommand(config: LogicReverseEngineeringEvaluationConfig): string {
+  const command =
+    config.command?.trim() ||
+    process.env.LOGIC_REVERSE_ENGINEERING_EVALUATION_COMMAND?.trim();
+
+  if (!command) {
+    throw new LogicReverseEngineeringValidationError(
+      "An evaluation command must be configured for this logic evaluation."
+    );
+  }
+
+  return command;
+}
+
+function runCommand(
+  command: string,
+  args: string[],
+  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
+): Promise<CommandResult> {
+  return new Promise<CommandResult>((resolve, reject) => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    let timedOut = false;
+
+    const child = spawn(command, args, {
+      env: options.env ?? process.env,
+    });
+
+    const timeoutId =
+      options.timeoutMs && options.timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true;
+            child.kill();
+          }, options.timeoutMs)
+        : null;
+
+    child.stdout.on("data", (chunk) => {
+      stdout.push(chunk.toString("utf8"));
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr.push(chunk.toString("utf8"));
+    });
+
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      if (error.code === "ENOENT") {
+        reject(new Error("Docker is not installed or not available in PATH."));
+        return;
+      }
+
+      reject(error);
+    });
+
+    child.on("close", (exitCode) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      resolve({
+        stdout: stdout.join(""),
+        stderr: stderr.join(""),
+        exitCode,
+        timedOut,
+      });
+    });
+  });
+}
+
+async function startContainer(dockerBin: string, image: string): Promise<string> {
+  const result = await runCommand(dockerBin, [
+    "run",
+    "-d",
+    "--rm",
+    "--entrypoint",
+    "sh",
+    image,
+    "-lc",
+    CONTAINER_KEEPALIVE_COMMAND,
+  ]);
+
+  if (result.exitCode !== 0) {
+    throw new Error(formatCommandFailure("Failed to start logic evaluation container.", result));
+  }
+
+  const containerId = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+
+  if (!containerId) {
+    throw new Error("Docker did not return a container ID for the logic evaluation.");
+  }
+
+  return containerId;
+}
+
+async function ensureContainerWorkspace(
+  dockerBin: string,
+  containerId: string
+): Promise<void> {
+  const result = await runCommand(dockerBin, [
+    "exec",
+    containerId,
+    "sh",
+    "-lc",
+    `mkdir -p ${CONTAINER_WORKDIR}`,
+  ]);
+
+  if (result.exitCode !== 0) {
+    throw new Error(formatCommandFailure("Failed to prepare the logic evaluation workspace.", result));
+  }
+}
+
+async function copyFileToContainer(
+  dockerBin: string,
+  containerId: string,
+  localPath: string,
+  fileName: string
+): Promise<void> {
+  const result = await runCommand(dockerBin, [
+    "cp",
+    localPath,
+    `${containerId}:${CONTAINER_WORKDIR}/${fileName}`,
+  ]);
+
+  if (result.exitCode !== 0) {
+    throw new Error(formatCommandFailure(`Failed to copy ${fileName} into the logic evaluation container.`, result));
+  }
+}
+
+async function stopContainer(dockerBin: string, containerId: string | null): Promise<void> {
+  if (!containerId) {
+    return;
+  }
+
+  await runCommand(dockerBin, ["rm", "-f", containerId]).catch(() => undefined);
 }
 
 export async function runLogicReverseEngineeringEvaluation(
@@ -209,71 +472,75 @@ export async function runLogicReverseEngineeringEvaluation(
 ): Promise<LogicReverseEngineeringEvaluationResult> {
   const dockerBin =
     process.env.LOGIC_REVERSE_ENGINEERING_DOCKER_BIN?.trim() || DEFAULT_DOCKER_BIN;
-  const image =
-    config.image?.trim() ||
-    process.env.LOGIC_REVERSE_ENGINEERING_DOCKER_IMAGE?.trim() ||
-    DEFAULT_DOCKER_IMAGE;
+  const image = getRequiredImage(config);
+  const command = getRequiredCommand(config);
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const workspace = await prepareWorkspace(config.submission, config.judgeFilePath);
+  let containerId: string | null = null;
 
   try {
-    return await new Promise<LogicReverseEngineeringEvaluationResult>((resolve, reject) => {
-      const logs: string[] = [];
-      let timedOut = false;
-
-      const child = spawn(
+    containerId = await startContainer(dockerBin, image);
+    await ensureContainerWorkspace(dockerBin, containerId);
+    await Promise.all([
+      copyFileToContainer(
         dockerBin,
-        [
-          "run",
-          "--rm",
-          "-i",
-          "-v",
-          formatDockerVolume(workspace.workspaceDir),
-          image,
-          "node",
-          "/workspace/runner.js",
-        ],
-        {
-          env: process.env,
-        }
-      );
+        containerId,
+        join(workspace.workspaceDir, workspace.entryFileName),
+        workspace.entryFileName
+      ),
+      copyFileToContainer(
+        dockerBin,
+        containerId,
+        join(workspace.workspaceDir, SUBMISSION_FILE_NAME),
+        SUBMISSION_FILE_NAME
+      ),
+      copyFileToContainer(
+        dockerBin,
+        containerId,
+        join(workspace.workspaceDir, RUNNER_FILE_NAME),
+        RUNNER_FILE_NAME
+      ),
+    ]);
 
-      const timeoutId = setTimeout(() => {
-        timedOut = true;
-        child.kill();
-      }, timeoutMs);
+    const execResult = await runCommand(
+      dockerBin,
+      [
+        "exec",
+        "-w",
+        CONTAINER_WORKDIR,
+        "-e",
+        `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${CONTAINER_WORKDIR}/${workspace.entryFileName}`,
+        "-e",
+        `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE=${CONTAINER_WORKDIR}/${SUBMISSION_FILE_NAME}`,
+        "-e",
+        `LOGIC_REVERSE_ENGINEERING_RUNNER_FILE=${CONTAINER_WORKDIR}/${RUNNER_FILE_NAME}`,
+        "-e",
+        `LOGIC_REVERSE_ENGINEERING_JUDGE_SOURCE=${workspace.judgeFilePath}`,
+        containerId,
+        "sh",
+        "-lc",
+        command,
+      ],
+      {
+        env: process.env,
+        timeoutMs,
+      }
+    );
 
-      child.stdout.on("data", (chunk) => {
-        logs.push(chunk.toString("utf8"));
-      });
+    const collectedLogs = truncateLogs(`${execResult.stdout}${execResult.stderr}`);
+    const parsed = parseEvaluationResult(
+      collectedLogs,
+      execResult.exitCode,
+      execResult.timedOut
+    );
 
-      child.stderr.on("data", (chunk) => {
-        logs.push(chunk.toString("utf8"));
-      });
-
-      child.on("error", (error: NodeJS.ErrnoException) => {
-        clearTimeout(timeoutId);
-        if (error.code === "ENOENT") {
-          reject(new Error("Docker is not installed or not available in PATH."));
-          return;
-        }
-
-        reject(error);
-      });
-
-      child.on("close", (exitCode) => {
-        clearTimeout(timeoutId);
-        const collectedLogs = truncateLogs(logs.join(""));
-        const parsed = parseEvaluationResult(collectedLogs, exitCode, timedOut);
-
-        resolve({
-          ...parsed,
-          logs: collectedLogs,
-          judgeFilePath: workspace.judgeFilePath,
-        });
-      });
-    });
+    return {
+      ...parsed,
+      logs: collectedLogs,
+      judgeFilePath: workspace.judgeFilePath,
+    };
   } finally {
+    await stopContainer(dockerBin, containerId);
     await rm(workspace.workspaceDir, { recursive: true, force: true });
   }
 }

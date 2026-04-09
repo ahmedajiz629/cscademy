@@ -58,6 +58,8 @@ export default defineSchema({
   logicReverseEngineeringProblemConfigs: defineTable({
     problemId: v.id("trackProblems"),
     judgeFilePath: v.optional(v.string()),
+    evaluationImage: v.optional(v.string()),
+    evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
   }).index("by_problemId", ["problemId"]),
 

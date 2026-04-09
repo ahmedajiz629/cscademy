@@ -4,7 +4,7 @@ const logicReverseEngineering: TrackModule = {
   id: "logic-reverse-engineering",
   name: "Logic & Reverse Engineering",
   description:
-    "String-based solver challenges verified by a downloadable Node.js judge running inside Docker.",
+    "String-based solver challenges verified by a downloadable judge running inside a configurable Docker evaluation.",
   icon: "🧠",
   isActive: true,
   order: 3,
