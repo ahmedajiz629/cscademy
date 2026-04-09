@@ -60,6 +60,22 @@ export function resolveOfflineGatewayUrl(requestUrl: string | URL): string {
   return normalizeOfflineGatewayUrl(sourceUrl.toString());
 }
 
+export function resolveOfflineGatewayUrlInBrowser(currentUrl: string | URL): string {
+  const configuredValue = process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_URL?.trim();
+  if (configuredValue) {
+    return normalizeOfflineGatewayUrl(configuredValue);
+  }
+
+  const sourceUrl = new URL(currentUrl.toString());
+  sourceUrl.protocol = sourceUrl.protocol === "https:" ? "wss:" : "ws:";
+  sourceUrl.port =
+    process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_PORT || DEFAULT_OFFLINE_GATEWAY_PORT;
+  sourceUrl.pathname = "";
+  sourceUrl.search = "";
+  sourceUrl.hash = "";
+  return normalizeOfflineGatewayUrl(sourceUrl.toString());
+}
+
 export async function createOfflineGatewayToken(
   payload: OfflineGatewayTokenPayload
 ) {

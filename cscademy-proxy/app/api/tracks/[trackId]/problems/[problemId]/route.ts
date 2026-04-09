@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { getConvexClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { isOfflineSessionStale } from "@/lib/offline-problem-access";
+import { isOfflineSessionStale } from "@/lib/offline-session";
 import { resolveOfflineGatewayUrl } from "@/lib/offline-gateway";
 import { getOfflineProbeImageUrl } from "@/lib/offline-anti-cheat-server";
 import { getTrackAccess } from "@/lib/tracks/access";

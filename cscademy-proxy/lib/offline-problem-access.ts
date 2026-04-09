@@ -2,23 +2,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getTrackAccess } from "@/lib/tracks/access";
-
-export const OFFLINE_HEARTBEAT_TIMEOUT_MS = 15000;
-
-export function isOfflineSessionStale(
-  session:
-    | {
-        status: "pending" | "active" | "terminated";
-        lastHeartbeatAt?: number;
-      }
-    | null
-    | undefined
-) {
-  return !!session &&
-    session.status === "active" &&
-    typeof session.lastHeartbeatAt === "number" &&
-    Date.now() - session.lastHeartbeatAt > OFFLINE_HEARTBEAT_TIMEOUT_MS;
-}
+import { isOfflineSessionStale } from "@/lib/offline-session";
 
 export async function getRuntimeProblemAccess(
   convex: ConvexHttpClient,

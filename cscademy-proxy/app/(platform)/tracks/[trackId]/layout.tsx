@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { notFound } from "next/navigation";
-import { getTrackAccessFromServer } from "@/lib/tracks/access";
+import TrackAccessBoundary from "@/components/tracks/TrackAccessBoundary";
 
 export default async function TrackLayout({
   children,
@@ -10,11 +9,6 @@ export default async function TrackLayout({
   params: Promise<{ trackId: string }>;
 }) {
   const { trackId } = await params;
-  const access = await getTrackAccessFromServer(trackId);
 
-  if (!access || !access.isVisible) {
-    notFound();
-  }
-
-  return children;
+  return <TrackAccessBoundary trackId={trackId}>{children}</TrackAccessBoundary>;
 }

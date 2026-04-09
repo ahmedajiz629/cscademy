@@ -6,12 +6,15 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import track from "@/lib/tracks/algorithmics";
 import {
   buildOfflineProbeUrl,
   formatOfflineClosedReason,
   OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS,
 } from "@/lib/offline-anti-cheat";
+import { resolveOfflineGatewayUrlInBrowser } from "@/lib/offline-gateway";
+import { isOfflineSessionStale } from "@/lib/offline-session";
 import OutputPanel from "@/components/OutputPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
@@ -40,6 +43,18 @@ interface OfflineProblemPreview {
   name: string;
   points: number;
   isOffline: true;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface OfflineRuntimeConfig {
+  gatewayUrl: string;
+  probeImageUrl: string | null;
 }
 
 type ProblemAccessState =
@@ -72,14 +87,28 @@ export default function AlgorithmicsProblemIDEPage() {
   const params = useParams();
   const trackId = track.id;
   const problemId = params.problemId as string;
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthResolved, setIsAuthResolved] = useState(false);
+  const [runtimeConfig, setRuntimeConfig] = useState<OfflineRuntimeConfig | null>(null);
 
   const languages = useQuery(api.programmingLanguages.listByTrack, {
     trackSlug: trackId,
   });
-
-  const [problemState, setProblemState] = useState<ProblemAccessState>({
-    status: "loading",
+  const problemRecord = useQuery(api.trackProblems.getBySlug, {
+    trackSlug: trackId,
+    slug: problemId,
   });
+  const session = useQuery(
+    api.offlineProblemSessions.getByUserAndProblem,
+    user?.id
+      ? {
+          userId: user.id as Id<"users">,
+          trackSlug: trackId,
+          problemSlug: problemId,
+        }
+      : "skip"
+  );
+
   const [langId, setLangId] = useState("");
   const [code, setCode] = useState("");
   const [input, setInput] = useState("");
@@ -91,6 +120,14 @@ export default function AlgorithmicsProblemIDEPage() {
   const [score, setScore] = useState<number | null>(null);
   const [isConnectingOffline, setIsConnectingOffline] = useState(false);
   const [offlineError, setOfflineError] = useState("");
+  const [optimisticClosedState, setOptimisticClosedState] = useState<
+    | {
+        problem: OfflineProblemPreview;
+        closedReason?: string;
+      }
+    | null
+  >(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const socketRef = useRef<WebSocket | null>(null);
   const offlineStartedRef = useRef(false);
@@ -112,48 +149,59 @@ export default function AlgorithmicsProblemIDEPage() {
     }
   }, []);
 
-  const loadProblem = useCallback(async () => {
-    try {
-      const response = await fetch(track.buildProblemApiPath(problemId), {
-        cache: "no-store",
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) {
+          setUser(d.user);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setIsAuthResolved(true);
+        }
       });
 
-      if (response.status === 404) {
-        setProblemState({ status: "not_found" });
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error("Failed to load problem");
-      }
-
-      const data = await response.json();
-      if (data.status === "closed") {
-        setProblemState({
-          status: "closed",
-          problem: data.problem,
-          closedReason: data.closedReason,
-        });
-        return;
-      }
-
-      if (data.status === "offline_confirmation") {
-        setProblemState({
-          status: "offline_confirmation",
-          problem: data.problem,
-          gatewayUrl: data.gatewayUrl,
-        });
-        return;
-      }
-
-      setProblemState({ status: "ready", problem: data.problem });
-    } catch {
-      setProblemState({ status: "not_found" });
-    }
-  }, [problemId]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    setProblemState({ status: "loading" });
+    let cancelled = false;
+
+    fetch("/api/offline/runtime-config", { cache: "no-store" })
+      .then(async (r) => {
+        if (!r.ok) {
+          throw new Error("Failed to load offline runtime config");
+        }
+
+        return r.json();
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setRuntimeConfig(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && typeof window !== "undefined") {
+          setRuntimeConfig({
+            gatewayUrl: resolveOfflineGatewayUrlInBrowser(window.location.href),
+            probeImageUrl: null,
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     setLangId("");
     setCode("");
     setInput("");
@@ -161,11 +209,21 @@ export default function AlgorithmicsProblemIDEPage() {
     setTestResults(null);
     setScore(null);
     setOfflineError("");
+    setOptimisticClosedState(null);
     pendingCloseReasonRef.current = null;
     probeTriggeredRef.current = false;
     clearProbeRequest();
-    void loadProblem();
-  }, [clearProbeRequest, loadProblem]);
+  }, [clearProbeRequest, problemId]);
+
+  useEffect(() => {
+    if (session?.status !== "active") {
+      setNow(Date.now());
+      return;
+    }
+
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [session?.lastHeartbeatAt, session?.status]);
 
   useEffect(() => {
     return () => {
@@ -174,6 +232,65 @@ export default function AlgorithmicsProblemIDEPage() {
       socketRef.current = null;
     };
   }, [clearProbeRequest]);
+
+  const problemState = useMemo<ProblemAccessState>(() => {
+    if (!isAuthResolved || problemRecord === undefined) {
+      return { status: "loading" };
+    }
+
+    if (!problemRecord) {
+      return { status: "not_found" };
+    }
+
+    if (problemRecord.isOffline !== true) {
+      return { status: "ready", problem: problemRecord };
+    }
+
+    if (!user || session === undefined) {
+      return { status: "loading" };
+    }
+
+    if (optimisticClosedState) {
+      return {
+        status: "closed",
+        problem: optimisticClosedState.problem,
+        closedReason: optimisticClosedState.closedReason,
+      };
+    }
+
+    if (session?.status === "terminated" || isOfflineSessionStale(session, now)) {
+      return {
+        status: "closed",
+        problem: toOfflineProblemPreview(problemRecord),
+        closedReason: session?.terminatedReason ?? "connection_lost",
+      };
+    }
+
+    if (session?.status === "active") {
+      return {
+        status: "ready",
+        problem: {
+          ...problemRecord,
+          probeImageUrl:
+            session.flagReason ? undefined : runtimeConfig?.probeImageUrl ?? undefined,
+        },
+      };
+    }
+
+    return {
+      status: "offline_confirmation",
+      problem: toOfflineProblemPreview(problemRecord),
+      gatewayUrl: runtimeConfig?.gatewayUrl ?? "",
+    };
+  }, [
+    isAuthResolved,
+    now,
+    optimisticClosedState,
+    problemRecord,
+    runtimeConfig,
+    session,
+    user,
+  ]);
 
   const problem = problemState.status === "ready" ? problemState.problem : null;
   const defaultLangId = languages?.[0]?.langId || "1";
@@ -209,25 +326,22 @@ export default function AlgorithmicsProblemIDEPage() {
   const currentLang = languages?.find((l) => l.langId === langId);
   const codemirrorLang = currentLang?.codemirrorMode || "cpp";
 
-  const reportProbeHit = useCallback(
-    (offlineProblem: ProblemDetails) => {
-      if (probeTriggeredRef.current) {
-        return;
-      }
+  const reportProbeHit = useCallback(() => {
+    if (probeTriggeredRef.current) {
+      return;
+    }
 
-      probeTriggeredRef.current = true;
-      clearProbeRequest();
+    probeTriggeredRef.current = true;
+    clearProbeRequest();
 
-      void fetch("/api/offline/pulse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
-      }).catch(() => {
-        // Silent best-effort report. The participant should not see anything.
-      });
-    },
-    [clearProbeRequest, problemId, trackId]
-  );
+    void fetch("/api/offline/pulse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
+    }).catch(() => {
+      // Silent best-effort report. The participant should not see anything.
+    });
+  }, [clearProbeRequest, problemId, trackId]);
 
   useEffect(() => {
     clearProbeRequest();
@@ -273,7 +387,7 @@ export default function AlgorithmicsProblemIDEPage() {
       image.onload = () => {
         probeImageRef.current = null;
         if (!cancelled) {
-          reportProbeHit(offlineProblem);
+          reportProbeHit();
         }
       };
 
@@ -403,6 +517,7 @@ export default function AlgorithmicsProblemIDEPage() {
     offlineStartedRef.current = false;
     pendingCloseReasonRef.current = null;
     probeTriggeredRef.current = false;
+    setOptimisticClosedState(null);
     clearProbeRequest();
     socketRef.current?.close();
 
@@ -433,7 +548,7 @@ export default function AlgorithmicsProblemIDEPage() {
           if (payload.type === "ready") {
             offlineStartedRef.current = true;
             setIsConnectingOffline(false);
-            void loadProblem();
+            setOptimisticClosedState(null);
           }
         } catch {
           // Ignore non-JSON payloads from the local gateway.
@@ -450,11 +565,10 @@ export default function AlgorithmicsProblemIDEPage() {
         if (offlineStartedRef.current) {
           const closedReason = pendingCloseReasonRef.current ?? "connection_lost";
           pendingCloseReasonRef.current = null;
-          setProblemState({
-            status: "closed",
+          setOptimisticClosedState({
             problem:
-              problemState.status === "offline_confirmation"
-                ? problemState.problem
+              problemRecord
+                ? toOfflineProblemPreview(problemRecord)
                 : toOfflineProblemPreview({
                     slug: problemId,
                     name: "Offline task",
@@ -473,7 +587,7 @@ export default function AlgorithmicsProblemIDEPage() {
       setIsConnectingOffline(false);
       setOfflineError(err.message || "Failed to start offline task");
     }
-  }, [clearProbeRequest, loadProblem, problemId, problemState, trackId]);
+  }, [clearProbeRequest, problemId, problemRecord, trackId]);
 
   if (problemState.status === "loading") {
     return (
@@ -565,7 +679,7 @@ export default function AlgorithmicsProblemIDEPage() {
               Any lost connection immediately ends the task for you. Closing, refreshing, or leaving this page also counts as a disconnect.
             </p>
             <p className="text-xs text-amber-200/80 font-mono">
-              Gateway: {problemState.gatewayUrl}
+              Gateway: {problemState.gatewayUrl || "Resolving gateway..."}
             </p>
           </div>
 

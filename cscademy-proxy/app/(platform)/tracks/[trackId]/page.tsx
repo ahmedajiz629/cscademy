@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getTrack } from "@/lib/tracks";
+import { isOfflineSessionStale } from "@/lib/offline-session";
 
 interface User {
   id: string;
@@ -27,9 +28,16 @@ export default function TrackDetailPage() {
   const params = useParams();
   const trackId = params.trackId as string;
   const [user, setUser] = useState<User | null>(null);
-  const [problems, setProblems] = useState<TrackProblemListItem[] | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const track = getTrack(trackId);
+  const problems = useQuery(api.trackProblems.listByTrack, { trackSlug: trackId });
+  const sessions = useQuery(
+    api.offlineProblemSessions.listByUserAndTrack,
+    user?.id
+      ? { userId: user.id as Id<"users">, trackSlug: trackId }
+      : "skip"
+  );
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -39,20 +47,14 @@ export default function TrackDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!track) {
-      setProblems([]);
+    if (!(sessions || []).some((session) => session.status === "active")) {
+      setNow(Date.now());
       return;
     }
 
-    setProblems(null);
-    fetch(track.problemsApiPath, { cache: "no-store" })
-      .then(async (r) => {
-        if (!r.ok) throw new Error("Failed to load problems");
-        return r.json();
-      })
-      .then((d) => setProblems(d.problems || []))
-      .catch(() => setProblems([]));
-  }, [track]);
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [sessions]);
 
   const scores = useQuery(
     api.scores.getByUserAndTrack,
@@ -61,22 +63,61 @@ export default function TrackDetailPage() {
       : "skip"
   );
 
+  const problemsList = useMemo<TrackProblemListItem[] | null>(() => {
+    if (!problems) {
+      return null;
+    }
+
+    const sessionByProblem = new Map(
+      (sessions || []).map((session) => [session.problemSlug, session])
+    );
+
+    return problems.map((problem) => {
+      if (problem.isOffline !== true) {
+        return {
+          slug: problem.slug,
+          name: problem.name,
+          points: problem.points,
+          isOffline: false,
+          offlineStatus: null,
+        };
+      }
+
+      const session = sessionByProblem.get(problem.slug);
+      const offlineStatus: TrackProblemListItem["offlineStatus"] =
+        session?.status === "terminated" || isOfflineSessionStale(session, now)
+          ? "closed"
+          : session?.status === "active"
+            ? "active"
+            : session?.status === "pending"
+              ? "pending"
+              : "ready";
+
+      return {
+        slug: problem.slug,
+        name: problem.name,
+        points: problem.points,
+        isOffline: true,
+        offlineStatus,
+      };
+    });
+  }, [now, problems, sessions]);
+
   if (!track) {
     return (
       <div className="p-8">
-        <div className="text-gray-400">Track not found.</div>
+        <div className="text-gray-400">Checking track...</div>
       </div>
     );
   }
-
-  const problemsList = problems || [];
 
   function getScore(problemSlug: string) {
     return scores?.find((s) => s.problemSlug === problemSlug);
   }
 
+  const resolvedProblems = problemsList || [];
   const totalEarned = scores?.reduce((sum, s) => sum + s.score, 0) || 0;
-  const totalPossible = problemsList.reduce((sum, p) => sum + p.points, 0);
+  const totalPossible = resolvedProblems.reduce((sum, p) => sum + p.points, 0);
 
   return (
     <div className="p-8">
@@ -106,17 +147,17 @@ export default function TrackDetailPage() {
         </div>
       </div>
 
-      {problems === null ? (
+      {problemsList === null ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
           Loading problems...
         </div>
-      ) : problemsList.length === 0 ? (
+      ) : resolvedProblems.length === 0 ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
           No problems in this track yet.
         </div>
       ) : (
         <div className="space-y-2">
-          {problemsList.map((problem, idx) => {
+          {resolvedProblems.map((problem, idx) => {
             const sc = getScore(problem.slug);
             const pct = sc ? (sc.score / problem.points) * 100 : 0;
             return (

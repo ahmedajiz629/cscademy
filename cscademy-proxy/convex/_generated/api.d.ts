@@ -14,6 +14,7 @@ import type * as programmingLanguages from "../programmingLanguages.js";
 import type * as scores from "../scores.js";
 import type * as trackProblems from "../trackProblems.js";
 import type * as trackSettings from "../trackSettings.js";
+import type * as tracks from "../tracks.js";
 import type * as users from "../users.js";
 
 import type {
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   scores: typeof scores;
   trackProblems: typeof trackProblems;
   trackSettings: typeof trackSettings;
+  tracks: typeof tracks;
   users: typeof users;
 }>;
 
