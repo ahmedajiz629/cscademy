@@ -26,6 +26,8 @@ type Problem = {
   evaluationImage?: string;
   baseCommit?: string;
   defaultSubmissionRef?: string;
+  judgeFilePath?: string;
+  starterSubmission?: string;
 };
 
 const EMPTY_FORM = {
@@ -42,6 +44,8 @@ const EMPTY_FORM = {
   evaluationImage: "",
   baseCommit: "",
   defaultSubmissionRef: "challenge",
+  judgeFilePath: "/test.ts",
+  starterSubmission: "",
   isOffline: false,
 };
 
@@ -67,6 +71,8 @@ export default function AdminTrackDetailPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Id<"trackProblems"> | null>(null);
 
   const isSoftwareEngineeringTrack = trackId === "software-engineering";
+  const isLogicReverseEngineeringTrack =
+    trackId === "logic-reverse-engineering";
   const canAddProblem =
     !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
   const isFormValid =
@@ -93,6 +99,8 @@ export default function AdminTrackDetailPage() {
       order: nextOrder,
       points: isSoftwareEngineeringTrack ? 20 : EMPTY_FORM.points,
       defaultSubmissionRef: isSoftwareEngineeringTrack ? "challenge" : "",
+      judgeFilePath: isLogicReverseEngineeringTrack ? "/test.ts" : "",
+      starterSubmission: "",
     });
     setEditingId(null);
     setMode("add");
@@ -113,6 +121,8 @@ export default function AdminTrackDetailPage() {
       evaluationImage: p.evaluationImage ?? "",
       baseCommit: p.baseCommit ?? "",
       defaultSubmissionRef: p.defaultSubmissionRef ?? "challenge",
+      judgeFilePath: p.judgeFilePath ?? "/test.ts",
+      starterSubmission: p.starterSubmission ?? "",
       isOffline: p.isOffline ?? false,
     });
     setEditingId(p._id);
@@ -127,7 +137,10 @@ export default function AdminTrackDetailPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const contestTaskId = !isSoftwareEngineeringTrack && form.contestTaskId
+      const contestTaskId =
+        !isSoftwareEngineeringTrack &&
+        !isLogicReverseEngineeringTrack &&
+        form.contestTaskId
         ? parseInt(form.contestTaskId)
         : undefined;
       const publicRepositoryUrl = isSoftwareEngineeringTrack
@@ -142,6 +155,12 @@ export default function AdminTrackDetailPage() {
       const defaultSubmissionRef = isSoftwareEngineeringTrack
         ? form.defaultSubmissionRef.trim() || undefined
         : undefined;
+      const judgeFilePath = isLogicReverseEngineeringTrack
+        ? form.judgeFilePath.trim() || undefined
+        : undefined;
+      const starterSubmission = isLogicReverseEngineeringTrack
+        ? form.starterSubmission
+        : undefined;
 
       if (mode === "add") {
         await createProblem({
@@ -151,19 +170,27 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: isSoftwareEngineeringTrack
+          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? undefined
             : form.sampleInput || undefined,
-          sampleOutput: isSoftwareEngineeringTrack
+          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? undefined
             : form.sampleOutput || undefined,
           contestTaskId,
-          referer: isSoftwareEngineeringTrack ? undefined : form.referer || undefined,
+          referer:
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+              ? undefined
+              : form.referer || undefined,
           publicRepositoryUrl,
           evaluationImage,
           baseCommit,
           defaultSubmissionRef,
-          isOffline: isSoftwareEngineeringTrack ? false : form.isOffline,
+          judgeFilePath,
+          starterSubmission,
+          isOffline:
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+              ? false
+              : form.isOffline,
         });
       } else if (mode === "edit" && editingId) {
         await updateProblem({
@@ -172,19 +199,27 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: isSoftwareEngineeringTrack
+          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? undefined
             : form.sampleInput || undefined,
-          sampleOutput: isSoftwareEngineeringTrack
+          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? undefined
             : form.sampleOutput || undefined,
           contestTaskId,
-          referer: isSoftwareEngineeringTrack ? undefined : form.referer || undefined,
+          referer:
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+              ? undefined
+              : form.referer || undefined,
           publicRepositoryUrl,
           evaluationImage,
           baseCommit,
           defaultSubmissionRef,
-          isOffline: isSoftwareEngineeringTrack ? false : form.isOffline,
+          judgeFilePath,
+          starterSubmission,
+          isOffline:
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+              ? false
+              : form.isOffline,
         });
       }
       setMode("view");
@@ -258,11 +293,17 @@ export default function AdminTrackDetailPage() {
         <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2">
           {isSoftwareEngineeringTrack
             ? "Runtime"
+            : isLogicReverseEngineeringTrack
+              ? "Judge Runtime"
             : `Languages (${languages?.length ?? "…"})`}
         </h2>
         {isSoftwareEngineeringTrack ? (
           <p className="text-sm text-gray-300">
             Repository submissions are evaluated inside Docker and do not use in-browser editor languages.
+          </p>
+        ) : isLogicReverseEngineeringTrack ? (
+          <p className="text-sm text-gray-300">
+            Students submit a single string expression that is checked by a downloadable Node.js judge running inside Docker.
           </p>
         ) : languages ? (
           <p className="text-sm text-gray-300">{languages.map((l) => l.name).join(", ")}</p>
@@ -270,7 +311,7 @@ export default function AdminTrackDetailPage() {
           <p className="text-sm text-gray-500">Loading…</p>
         )}
         <p className="text-xs text-gray-600 mt-1">
-          {isSoftwareEngineeringTrack
+          {isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? "Docker must be available on the server that runs this app."
             : "Languages are seeded from the evaluation provider and cannot be edited here."}
         </p>
@@ -341,7 +382,7 @@ export default function AdminTrackDetailPage() {
                 className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
-            {!isSoftwareEngineeringTrack && (
+            {!isSoftwareEngineeringTrack && !isLogicReverseEngineeringTrack && (
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
                 <button
@@ -413,6 +454,35 @@ export default function AdminTrackDetailPage() {
                 <div className="col-span-2">
                   <p className="text-xs text-gray-500">
                     Students clone the public repository above, then submit a private repository URL, branch, and GitHub token at evaluation time.
+                  </p>
+                </div>
+              </>
+            ) : isLogicReverseEngineeringTrack ? (
+              <>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Judge File Path</label>
+                  <input
+                    value={form.judgeFilePath}
+                    onChange={(e) => setForm({ ...form, judgeFilePath: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    placeholder="/test.ts"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Starter Submission</label>
+                  <textarea
+                    rows={4}
+                    value={form.starterSubmission}
+                    onChange={(e) =>
+                      setForm({ ...form, starterSubmission: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                    placeholder="Optional starter expression shown to students"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">
+                    The judge file is served from public/ and is downloadable by students. The platform runs that same file in Docker and awards full points only when the final JSON line contains ok=true.
                   </p>
                 </div>
               </>
@@ -492,7 +562,9 @@ export default function AdminTrackDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Slug</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Mode</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Task ID</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                  {isLogicReverseEngineeringTrack ? "Judge File" : "Task ID"}
+                </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Actions</th>
@@ -517,7 +589,11 @@ export default function AdminTrackDetailPage() {
                       {p.isOffline ? "Offline" : "Online"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">{p.contestTaskId ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400 font-mono">
+                    {isLogicReverseEngineeringTrack
+                      ? p.judgeFilePath ?? "—"
+                      : p.contestTaskId ?? "—"}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-400">{p.points}</td>
                   <td className="px-4 py-3 text-center">
                     <button

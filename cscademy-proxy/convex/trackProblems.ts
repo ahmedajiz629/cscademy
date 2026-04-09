@@ -37,6 +37,18 @@ async function getSoftwareEngineeringConfigByProblemId(
   return configs[0] || null;
 }
 
+async function getLogicReverseEngineeringConfigByProblemId(
+  ctx: any,
+  problemId: Id<"trackProblems">
+) {
+  const configs = await ctx.db
+    .query("logicReverseEngineeringProblemConfigs")
+    .withIndex("by_problemId", (queryRef: any) => queryRef.eq("problemId", problemId))
+    .collect();
+
+  return configs[0] || null;
+}
+
 async function upsertAlgorithmicsConfig(
   ctx: any,
   problemId: Id<"trackProblems">,
@@ -98,6 +110,37 @@ async function upsertSoftwareEngineeringConfig(
   });
 }
 
+async function upsertLogicReverseEngineeringConfig(
+  ctx: any,
+  problemId: Id<"trackProblems">,
+  fields: {
+    judgeFilePath?: string;
+    starterSubmission?: string;
+  }
+) {
+  const existingConfig = await getLogicReverseEngineeringConfigByProblemId(
+    ctx,
+    problemId
+  );
+  const cleanConfig = cleanFields(fields);
+
+  if (existingConfig) {
+    if (Object.keys(cleanConfig).length > 0) {
+      await ctx.db.patch(existingConfig._id, cleanConfig);
+    }
+    return;
+  }
+
+  if (Object.keys(cleanConfig).length === 0) {
+    return;
+  }
+
+  await ctx.db.insert("logicReverseEngineeringProblemConfigs", {
+    problemId,
+    ...cleanConfig,
+  });
+}
+
 async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
   if (problem.trackSlug === "algorithmics") {
     const config = await getAlgorithmicsConfigByProblemId(ctx, problem._id);
@@ -109,6 +152,14 @@ async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
 
   if (problem.trackSlug === "software-engineering") {
     const config = await getSoftwareEngineeringConfigByProblemId(ctx, problem._id);
+    if (config) {
+      await ctx.db.delete(config._id);
+    }
+    return;
+  }
+
+  if (problem.trackSlug === "logic-reverse-engineering") {
+    const config = await getLogicReverseEngineeringConfigByProblemId(ctx, problem._id);
     if (config) {
       await ctx.db.delete(config._id);
     }
@@ -127,6 +178,8 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
     evaluationImage: undefined as string | undefined,
     baseCommit: undefined as string | undefined,
     defaultSubmissionRef: undefined as string | undefined,
+    judgeFilePath: undefined as string | undefined,
+    starterSubmission: undefined as string | undefined,
     isOffline: problem.isOffline ?? false,
   };
 
@@ -152,6 +205,20 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
       evaluationImage: config?.evaluationImage,
       baseCommit: config?.baseCommit,
       defaultSubmissionRef: config?.defaultSubmissionRef,
+      isOffline: false,
+    };
+  }
+
+  if (problem.trackSlug === "logic-reverse-engineering") {
+    const config = await getLogicReverseEngineeringConfigByProblemId(
+      ctx,
+      problem._id
+    );
+
+    return {
+      ...sharedShape,
+      judgeFilePath: config?.judgeFilePath,
+      starterSubmission: config?.starterSubmission,
       isOffline: false,
     };
   }
@@ -239,6 +306,8 @@ export const create = mutation({
     evaluationImage: v.optional(v.string()),
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
+    judgeFilePath: v.optional(v.string()),
+    starterSubmission: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -284,6 +353,13 @@ export const create = mutation({
       });
     }
 
+    if (args.trackSlug === "logic-reverse-engineering") {
+      await upsertLogicReverseEngineeringConfig(ctx, problemId, {
+        judgeFilePath: args.judgeFilePath,
+        starterSubmission: args.starterSubmission,
+      });
+    }
+
     return problemId;
   },
 });
@@ -304,6 +380,8 @@ export const update = mutation({
     evaluationImage: v.optional(v.string()),
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
+    judgeFilePath: v.optional(v.string()),
+    starterSubmission: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
@@ -341,6 +419,13 @@ export const update = mutation({
         evaluationImage: fields.evaluationImage,
         baseCommit: fields.baseCommit,
         defaultSubmissionRef: fields.defaultSubmissionRef,
+      });
+    }
+
+    if (problem.trackSlug === "logic-reverse-engineering") {
+      await upsertLogicReverseEngineeringConfig(ctx, id, {
+        judgeFilePath: fields.judgeFilePath,
+        starterSubmission: fields.starterSubmission,
       });
     }
   },

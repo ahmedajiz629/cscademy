@@ -54,6 +54,13 @@ export default defineSchema({
     defaultSubmissionRef: v.optional(v.string()),
   }).index("by_problemId", ["problemId"]),
 
+  // Logic & reverse engineering-only problem settings
+  logicReverseEngineeringProblemConfigs: defineTable({
+    problemId: v.id("trackProblems"),
+    judgeFilePath: v.optional(v.string()),
+    starterSubmission: v.optional(v.string()),
+  }).index("by_problemId", ["problemId"]),
+
   // Per-student lifecycle for offline/LAN-gated problems
   offlineProblemSessions: defineTable({
     userId: v.id("users"),

@@ -235,6 +235,26 @@ Result rules
       baseCommit: "fe8afb3ab6564b1af14b8c1a80e78bd3668868be",
       defaultSubmissionRef: "main",
     },
+    {
+      trackSlug: "logic-reverse-engineering",
+      slug: "hardest-logic-puzzle",
+      name: "Hardest Logic Puzzle",
+      description: `Download the public judge file and submit a single JavaScript expression string.
+
+Evaluation flow
+1. Download the judge file for this challenge.
+2. Reverse engineer the accepted expression format from the file itself.
+3. Submit only the expression string, not a full program.
+4. The platform runs the same judge inside an isolated Node.js Docker container.
+
+Scoring rule
+- If the final judge output is {"ok":true}, you receive the full score.
+- Any other output or runtime failure scores 0.` ,
+      points: 100,
+      order: 1,
+      judgeFilePath: "/test.ts",
+      starterSubmission: "",
+    },
   ];
 }
 
@@ -248,7 +268,7 @@ async function seed() {
   try {
     const adminId = await client.mutation("users:create", {
       name: "Admin",
-      email: "admin@ajiz.tech",
+      email: "admin@tech.ajiz.org",
       passwordHash: adminHash,
       role: "admin",
     });
@@ -270,7 +290,7 @@ async function seed() {
   try {
     const studentId = await client.mutation("users:create", {
       name: "Test Student",
-      email: "student@ajiz.tech",
+      email: "student@tech.ajiz.org",
       passwordHash: studentHash,
       role: "student",
     });
@@ -300,17 +320,31 @@ async function seed() {
     "trackProblems:clearByTrack",
     { trackSlug: "software-engineering" }
   );
+  const clearedLogicReverseEngineeringLangs = await client.mutation(
+    "programmingLanguages:clearByTrack",
+    { trackSlug: "logic-reverse-engineering" }
+  );
+  const clearedLogicReverseEngineeringProblems = await client.mutation(
+    "trackProblems:clearByTrack",
+    { trackSlug: "logic-reverse-engineering" }
+  );
   if (
     clearedLangs ||
     clearedProblems ||
     clearedSoftwareEngineeringLangs ||
-    clearedSoftwareEngineeringProblems
+    clearedSoftwareEngineeringProblems ||
+    clearedLogicReverseEngineeringLangs ||
+    clearedLogicReverseEngineeringProblems
   )
     console.log(
       `✓ Cleared ${
-        clearedLangs + clearedSoftwareEngineeringLangs
+        clearedLangs +
+        clearedSoftwareEngineeringLangs +
+        clearedLogicReverseEngineeringLangs
       } old languages, ${
-        clearedProblems + clearedSoftwareEngineeringProblems
+        clearedProblems +
+        clearedSoftwareEngineeringProblems +
+        clearedLogicReverseEngineeringProblems
       } old problems`
     );
 

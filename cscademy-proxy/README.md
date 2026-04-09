@@ -6,6 +6,7 @@ Ajiz Tech Challenge is a track-based programming challenge platform built with N
 
 - Track-based challenge delivery with per-problem scoring.
 - Repository-based software engineering challenges evaluated through Docker runners.
+- Logic and reverse engineering challenges that evaluate a submitted string against a downloadable Node.js judge.
 - Admin tools for users, tracks, languages, and problem configuration.
 - Offline tasks gated by an offline-room live connection.
 - Incident tracking and silent anti-cheat reporting for offline sessions.
@@ -62,6 +63,7 @@ External evaluation account credentials are linked per user from the admin inter
 - Offline tasks should be opened from the offline room HTTP entrypoint; the gateway uses the same host as the page and only changes the port.
 - The algorithmics track currently uses the external judge integration for run and submit actions.
 - The software engineering track evaluates repository branches by running configured Docker images against student submissions.
+- The logic and reverse engineering track evaluates a submitted string by running a public judge file inside a Node.js Docker container.
 
 ## Seeding and Tooling
 
