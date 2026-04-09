@@ -7,7 +7,7 @@ Ajiz Tech Challenge is a track-based programming challenge platform built with N
 - Track-based challenge delivery with per-problem scoring.
 - Repository-based software engineering challenges evaluated through Docker runners.
 - Admin tools for users, tracks, languages, and problem configuration.
-- Offline tasks gated by a local WebSocket gateway.
+- Offline tasks gated by an offline-room live connection.
 - Incident tracking and silent anti-cheat reporting for offline sessions.
 - Reactive Convex-powered pages for track and problem availability.
 
@@ -39,7 +39,7 @@ The project expects these environment variables:
 - `NEXT_PUBLIC_CONVEX_URL`
 - `JWT_SECRET`
 - `OFFLINE_GATEWAY_SECRET` or `JWT_SECRET`
-- `OFFLINE_GATEWAY_URL` or `OFFLINE_GATEWAY_PORT` (defaults to `ws://127.0.0.1:8787`)
+- `OFFLINE_GATEWAY_PORT` (defaults to `8787`)
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 
 Docker must also be installed on the server for software engineering track evaluations.
@@ -50,7 +50,8 @@ External evaluation account credentials are linked per user from the admin inter
 
 - App Router handles the web UI and internal API routes.
 - Convex stores users, track settings, problems, languages, scores, and offline session state.
-- The offline gateway is expected to run locally for offline tasks and maintains their live presence.
+- The offline gateway is expected to run on the offline-room host and maintains live presence for offline tasks.
+- Offline tasks should be opened from the offline room HTTP entrypoint; the gateway uses the same host as the page and only changes the port.
 - The algorithmics track currently uses the external judge integration for run and submit actions.
 - The software engineering track evaluates repository branches by running configured Docker images against student submissions.
 

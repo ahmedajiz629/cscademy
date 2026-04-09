@@ -14,7 +14,10 @@ import {
   formatOfflineClosedReason,
   OFFLINE_ANTI_CHEAT_RETRY_INTERVAL_MS,
 } from "@/lib/offline-anti-cheat";
-import { resolveOfflineGatewayUrlInBrowser } from "@/lib/offline-gateway";
+import {
+  canStartOfflineTaskFromUrl,
+  resolveOfflineGatewayUrlInBrowser,
+} from "@/lib/offline-gateway";
 import { isOfflineSessionStale } from "@/lib/offline-session";
 import OutputPanel from "@/components/OutputPanel";
 
@@ -54,7 +57,7 @@ interface User {
 }
 
 interface OfflineRuntimeConfig {
-  gatewayUrl: string;
+  canStartOfflineTask: boolean;
   probeImageUrl: string | null;
 }
 
@@ -69,7 +72,7 @@ type ProblemAccessState =
   | {
       status: "offline_confirmation";
       problem: OfflineProblemPreview;
-      gatewayUrl: string;
+      canStartOfflineTask: boolean;
     }
   | { status: "ready"; problem: ProblemDetails };
 
@@ -191,7 +194,7 @@ export default function AlgorithmicsProblemIDEPage() {
       .catch(() => {
         if (!cancelled && typeof window !== "undefined") {
           setRuntimeConfig({
-            gatewayUrl: resolveOfflineGatewayUrlInBrowser(window.location.href),
+            canStartOfflineTask: canStartOfflineTaskFromUrl(window.location.href),
             probeImageUrl: null,
           });
         }
@@ -281,7 +284,11 @@ export default function AlgorithmicsProblemIDEPage() {
     return {
       status: "offline_confirmation",
       problem: toOfflineProblemPreview(problemRecord),
-      gatewayUrl: runtimeConfig?.gatewayUrl ?? "",
+      canStartOfflineTask:
+        runtimeConfig?.canStartOfflineTask ??
+        (typeof window !== "undefined"
+          ? canStartOfflineTaskFromUrl(window.location.href)
+          : false),
     };
   }, [
     isAuthResolved,
@@ -513,6 +520,15 @@ export default function AlgorithmicsProblemIDEPage() {
   }, [code, langId, problem, problemId, trackId]);
 
   const startOfflineTask = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!canStartOfflineTaskFromUrl(window.location.href)) {
+      setOfflineError("You need to open this task from the offline room to start it.");
+      return;
+    }
+
     setIsConnectingOffline(true);
     setOfflineError("");
     offlineStartedRef.current = false;
@@ -534,7 +550,7 @@ export default function AlgorithmicsProblemIDEPage() {
         throw new Error(data.error || "Failed to start offline task");
       }
 
-      const wsUrl = new URL(data.gatewayUrl);
+      const wsUrl = new URL(resolveOfflineGatewayUrlInBrowser(window.location.href));
       wsUrl.searchParams.set("token", data.token);
       const socket = new WebSocket(wsUrl.toString());
       socketRef.current = socket;
@@ -548,16 +564,17 @@ export default function AlgorithmicsProblemIDEPage() {
           const payload = JSON.parse(event.data);
           if (payload.type === "ready") {
             offlineStartedRef.current = true;
+            setOfflineError("");
             setIsConnectingOffline(false);
             setOptimisticClosedState(null);
           }
         } catch {
-          // Ignore non-JSON payloads from the local gateway.
+          // Ignore non-JSON payloads from the offline room connection.
         }
       });
 
       socket.addEventListener("error", () => {
-        setOfflineError("Could not connect to the local gateway.");
+        setOfflineError("Could not connect from this offline room session.");
       });
 
       socket.addEventListener("close", () => {
@@ -579,9 +596,7 @@ export default function AlgorithmicsProblemIDEPage() {
           });
         } else {
           setIsConnectingOffline(false);
-          setOfflineError(
-            "Connection to the local gateway was lost before the task started."
-          );
+          setOfflineError("Connection to the offline room was lost before the task started.");
         }
       });
     } catch (err: any) {
@@ -635,7 +650,7 @@ export default function AlgorithmicsProblemIDEPage() {
               This offline task has been closed for your account.
             </p>
             <p>
-              Once the local WebSocket connection is lost, the task cannot be reopened and no further work can be submitted.
+              Once the offline room connection is lost, the task cannot be reopened and no further work can be submitted.
             </p>
             {problemState.closedReason && (
               <p className="text-xs uppercase tracking-wide text-red-300/80">
@@ -673,15 +688,31 @@ export default function AlgorithmicsProblemIDEPage() {
           </div>
 
           <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-100 space-y-3">
-            <p>
-              This task only becomes visible after a live WebSocket connection is established with your local gateway.
-            </p>
-            <p>
-              Any lost connection immediately ends the task for you. Closing, refreshing, or leaving this page also counts as a disconnect.
-            </p>
-            <p className="text-xs text-amber-200/80 font-mono">
-              Gateway: {problemState.gatewayUrl || "Resolving gateway..."}
-            </p>
+            {problemState.canStartOfflineTask ? (
+              <>
+                <p>
+                  This task can only be started from the offline room.
+                </p>
+                <p>
+                  You are on the offline room access link, so you can start it here.
+                </p>
+                <p>
+                  Any lost connection immediately ends the task for you. Closing, refreshing, or leaving this page also counts as a disconnect.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  You need to open this task from the offline room to start it.
+                </p>
+                <p>
+                  Use the HTTP access link provided in the room, then come back to this task there.
+                </p>
+                <p>
+                  After the task starts, leaving that page or losing the room connection closes it immediately.
+                </p>
+              </>
+            )}
           </div>
 
           {offlineError && (
@@ -691,18 +722,20 @@ export default function AlgorithmicsProblemIDEPage() {
           )}
 
           <div className="flex items-center gap-3 mt-6">
-            <button
-              onClick={startOfflineTask}
-              disabled={isConnectingOffline}
-              className="px-5 py-2.5 text-sm bg-amber-500 hover:bg-amber-400 disabled:bg-amber-700 text-black font-medium rounded-lg transition-colors"
-            >
-              {isConnectingOffline ? "Connecting..." : "Confirm and Start"}
-            </button>
+            {problemState.canStartOfflineTask && (
+              <button
+                onClick={startOfflineTask}
+                disabled={isConnectingOffline}
+                className="px-5 py-2.5 text-sm bg-amber-500 hover:bg-amber-400 disabled:bg-amber-700 text-black font-medium rounded-lg transition-colors"
+              >
+                {isConnectingOffline ? "Connecting..." : "Confirm and Start"}
+              </button>
+            )}
             <Link
               href={`/tracks/${trackId}`}
               className="px-5 py-2.5 text-sm bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg transition-colors"
             >
-              Cancel
+              {problemState.canStartOfflineTask ? "Cancel" : "Back to track"}
             </Link>
           </div>
         </div>

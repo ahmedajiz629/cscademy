@@ -4,7 +4,7 @@ import { getConvexClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { isOfflineSessionStale } from "@/lib/offline-session";
-import { resolveOfflineGatewayUrl } from "@/lib/offline-gateway";
+import { canStartOfflineTaskFromUrl } from "@/lib/offline-gateway";
 import { getOfflineProbeImageUrl } from "@/lib/offline-anti-cheat-server";
 import { getTrackAccess } from "@/lib/tracks/access";
 
@@ -72,9 +72,11 @@ export async function GET(
     });
   }
 
+  const forwardedProto = req.headers.get("x-forwarded-proto") ?? undefined;
+
   return NextResponse.json({
     status: "offline_confirmation",
-    gatewayUrl: resolveOfflineGatewayUrl(req.nextUrl),
+    canStartOfflineTask: canStartOfflineTaskFromUrl(req.nextUrl, forwardedProto),
     problem: {
       slug: problem.slug,
       name: problem.name,

@@ -5,6 +5,7 @@ import { getConvexClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
+  canStartOfflineTaskFromUrl,
   createOfflineGatewayToken,
   resolveOfflineGatewayUrl,
 } from "@/lib/offline-gateway";
@@ -54,7 +55,16 @@ export async function POST(req: NextRequest) {
   }
 
   const sessionId = randomUUID();
-  const gatewayUrl = resolveOfflineGatewayUrl(req.nextUrl);
+  const forwardedProto = req.headers.get("x-forwarded-proto") ?? undefined;
+
+  if (!canStartOfflineTaskFromUrl(req.nextUrl, forwardedProto)) {
+    return NextResponse.json(
+      { error: "You need to open this task from the offline room to start it." },
+      { status: 409 }
+    );
+  }
+
+  const gatewayUrl = resolveOfflineGatewayUrl(req.nextUrl, forwardedProto);
 
   await convex.mutation(api.offlineProblemSessions.prepareEntry, {
     userId,
@@ -71,5 +81,5 @@ export async function POST(req: NextRequest) {
     sessionId,
   });
 
-  return NextResponse.json({ gatewayUrl, sessionId, token });
+  return NextResponse.json({ sessionId, token });
 }
