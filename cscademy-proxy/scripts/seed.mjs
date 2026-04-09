@@ -366,8 +366,8 @@ async function seed() {
   }
 
   console.log("\n=== Seed complete ===");
-  console.log("Admin login:   admin@ajiz.tech / admin123");
-  console.log("Student login: student@ajiz.tech / student123");
+  console.log("Admin login:   admin@tech.ajiz.org / admin123");
+  console.log("Student login: student@tech.ajiz.org / student123");
   console.log(`Languages seeded: ${languages.length}`);
   console.log(`Problems seeded: ${problems.length}`);
 }
