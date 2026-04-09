@@ -57,6 +57,8 @@ Optional evaluator defaults:
 - `LOGIC_REVERSE_ENGINEERING_DOCKER_IMAGE`
 - `LOGIC_REVERSE_ENGINEERING_EVALUATION_COMMAND`
 
+The logic evaluator copies the raw judge source and submission file into the container, pipes the submission to stdin, and then runs the configured command. Inside the container, `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE` points to the raw judge file and `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE` points to the saved submission input.
+
 External evaluation account credentials are linked per user from the admin interface.
 
 ## Architecture Notes

@@ -2,7 +2,6 @@ import { spawn } from "child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
-import * as ts from "typescript";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_LOG_CHARS = 50_000;
@@ -11,7 +10,6 @@ const CONTAINER_WORKDIR = "/workspace";
 const CONTAINER_KEEPALIVE_COMMAND =
   'trap "exit 0" TERM INT; while :; do sleep 3600; done';
 const SUBMISSION_FILE_NAME = "submission.txt";
-const RUNNER_FILE_NAME = "runner.js";
 
 export class LogicReverseEngineeringValidationError extends Error {}
 
@@ -34,7 +32,7 @@ export interface LogicReverseEngineeringEvaluationResult {
 interface PreparedWorkspace {
   workspaceDir: string;
   judgeFilePath: string;
-  entryFileName: string;
+  judgeFileName: string;
 }
 
 interface ParsedEvaluationResult {
@@ -147,35 +145,12 @@ function getJudgeAbsolutePath(judgeFilePath: string): string {
   return absolutePath;
 }
 
-function createRunnerSource(): string {
-  return [
-    'const { readFileSync } = require("node:fs");',
-    'const { spawnSync } = require("node:child_process");',
-    'const judgeFile = process.env.LOGIC_REVERSE_ENGINEERING_JUDGE_FILE;',
-    'const submissionFile = process.env.LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE;',
-    'if (!judgeFile || !submissionFile) {',
-    '  console.error("Logic evaluator is missing judge or submission file configuration.");',
-    '  process.exit(1);',
-    '}',
-    'const submission = readFileSync(submissionFile, "utf8");',
-    'const result = spawnSync(process.execPath, [judgeFile, submission], { stdio: "inherit" });',
-    'if (result.error) {',
-    '  console.error(result.error);',
-    '  process.exit(1);',
-    '}',
-    'process.exit(result.status ?? 1);',
-  ].join("\n");
-}
-
 function sanitizeBaseName(rawValue: string): string {
   const fileName = basename(rawValue).replace(/[^A-Za-z0-9._-]+/g, "-");
-  const trimmed = fileName.replace(/^[-.]+|[-.]+$/g, "");
-  const withoutExtension = trimmed.replace(/\.[^.]+$/, "");
-
-  return withoutExtension || "judge";
+  return fileName.replace(/^[-.]+|[-.]+$/g, "") || "judge";
 }
 
-function buildEntryFileName(judgeFilePath: string): string {
+function buildJudgeFileName(judgeFilePath: string): string {
   let fileNameSource = judgeFilePath;
 
   const remoteUrl = parseHttpUrl(judgeFilePath);
@@ -183,7 +158,7 @@ function buildEntryFileName(judgeFilePath: string): string {
     fileNameSource = remoteUrl.pathname || "judge";
   }
 
-  return `${sanitizeBaseName(fileNameSource)}.js`;
+  return sanitizeBaseName(fileNameSource);
 }
 
 async function loadJudgeSource(judgeSource: JudgeSourceDescriptor): Promise<string> {
@@ -213,16 +188,6 @@ async function loadJudgeSource(judgeSource: JudgeSourceDescriptor): Promise<stri
   return await response.text();
 }
 
-function compileJudgeSource(source: string): string {
-  return ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      allowJs: true,
-    },
-  }).outputText;
-}
-
 async function prepareWorkspace(
   submission: string,
   rawJudgeFilePath?: string
@@ -231,19 +196,16 @@ async function prepareWorkspace(
   const source = await loadJudgeSource(judgeSource);
 
   const workspaceDir = await mkdtemp(join(tmpdir(), "logic-re-judge-"));
-  const entryFileName = buildEntryFileName(judgeSource.displayValue);
-  const compiledSource = compileJudgeSource(source);
-
+  const judgeFileName = buildJudgeFileName(judgeSource.displayValue);
   await Promise.all([
-    writeFile(join(workspaceDir, entryFileName), compiledSource, "utf8"),
+    writeFile(join(workspaceDir, judgeFileName), source, "utf8"),
     writeFile(join(workspaceDir, SUBMISSION_FILE_NAME), submission, "utf8"),
-    writeFile(join(workspaceDir, RUNNER_FILE_NAME), createRunnerSource(), "utf8"),
   ]);
 
   return {
     workspaceDir,
     judgeFilePath: judgeSource.displayValue,
-    entryFileName,
+    judgeFileName,
   };
 }
 
@@ -341,7 +303,11 @@ function getRequiredCommand(config: LogicReverseEngineeringEvaluationConfig): st
 function runCommand(
   command: string,
   args: string[],
-  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
+  options: {
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+    stdinText?: string;
+  } = {}
 ): Promise<CommandResult> {
   return new Promise<CommandResult>((resolve, reject) => {
     const stdout: string[] = [];
@@ -367,6 +333,11 @@ function runCommand(
     child.stderr.on("data", (chunk) => {
       stderr.push(chunk.toString("utf8"));
     });
+
+    if (child.stdin) {
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(options.stdinText, "utf8");
+    }
 
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (timeoutId) {
@@ -481,12 +452,12 @@ export async function runLogicReverseEngineeringEvaluation(
   try {
     containerId = await startContainer(dockerBin, image);
     await ensureContainerWorkspace(dockerBin, containerId);
-    await Promise.all([
+    const copyOperations = [
       copyFileToContainer(
         dockerBin,
         containerId,
-        join(workspace.workspaceDir, workspace.entryFileName),
-        workspace.entryFileName
+        join(workspace.workspaceDir, workspace.judgeFileName),
+        workspace.judgeFileName
       ),
       copyFileToContainer(
         dockerBin,
@@ -494,26 +465,21 @@ export async function runLogicReverseEngineeringEvaluation(
         join(workspace.workspaceDir, SUBMISSION_FILE_NAME),
         SUBMISSION_FILE_NAME
       ),
-      copyFileToContainer(
-        dockerBin,
-        containerId,
-        join(workspace.workspaceDir, RUNNER_FILE_NAME),
-        RUNNER_FILE_NAME
-      ),
-    ]);
+    ];
+
+    await Promise.all(copyOperations);
 
     const execResult = await runCommand(
       dockerBin,
       [
         "exec",
+        "-i",
         "-w",
         CONTAINER_WORKDIR,
         "-e",
-        `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${CONTAINER_WORKDIR}/${workspace.entryFileName}`,
+        `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${CONTAINER_WORKDIR}/${workspace.judgeFileName}`,
         "-e",
         `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE=${CONTAINER_WORKDIR}/${SUBMISSION_FILE_NAME}`,
-        "-e",
-        `LOGIC_REVERSE_ENGINEERING_RUNNER_FILE=${CONTAINER_WORKDIR}/${RUNNER_FILE_NAME}`,
         "-e",
         `LOGIC_REVERSE_ENGINEERING_JUDGE_SOURCE=${workspace.judgeFilePath}`,
         containerId,
@@ -523,6 +489,7 @@ export async function runLogicReverseEngineeringEvaluation(
       ],
       {
         env: process.env,
+        stdinText: config.submission,
         timeoutMs,
       }
     );

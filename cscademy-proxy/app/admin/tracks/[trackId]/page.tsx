@@ -487,7 +487,7 @@ export default function AdminTrackDetailPage() {
                     value={form.evaluationCommand}
                     onChange={(e) => setForm({ ...form, evaluationCommand: e.target.value })}
                     className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                    placeholder='node "$LOGIC_REVERSE_ENGINEERING_RUNNER_FILE"'
+                    placeholder='node --experimental-strip-types "$LOGIC_REVERSE_ENGINEERING_JUDGE_FILE" "$(cat "$LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE")"'
                   />
                 </div>
                 <div className="col-span-2">
@@ -504,7 +504,7 @@ export default function AdminTrackDetailPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-gray-500">
-                    The judge source can be a public path or an external HTTP(S) URL. The configured command runs inside Docker after the platform copies the judge, runner, and submission files into the container. Available env vars include LOGIC_REVERSE_ENGINEERING_JUDGE_FILE, LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE, and LOGIC_REVERSE_ENGINEERING_RUNNER_FILE.
+                    The judge source can be a public path or an external HTTP(S) URL. The configured command runs inside Docker after the platform copies the raw judge and submission files into the container. The submission is also piped to stdin. Available env vars include LOGIC_REVERSE_ENGINEERING_JUDGE_FILE and LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE.
                   </p>
                 </div>
               </>

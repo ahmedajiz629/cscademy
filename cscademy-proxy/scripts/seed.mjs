@@ -312,7 +312,8 @@ Scoring rule
       order: 1,
       judgeFilePath: "/hlqpz.ts",
       evaluationImage: "node:22-alpine",
-      evaluationCommand: 'node "$LOGIC_REVERSE_ENGINEERING_RUNNER_FILE"',
+      evaluationCommand:
+        'node --experimental-strip-types "$LOGIC_REVERSE_ENGINEERING_JUDGE_FILE" "$(cat "$LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE")"',
       starterSubmission: "",
     },
   ];

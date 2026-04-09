@@ -262,7 +262,7 @@ export default function LogicReverseEngineeringProblemPage() {
                 ) : null}
               </div>
               <p className="mt-4 text-xs text-gray-400">
-                The platform copies this judge into the configured Docker image, runs the configured evaluation command, and grants full points only when the final line is <code>{'{"ok":true}'}</code>.
+                The platform copies the judge and submission into the configured Docker image, runs the configured evaluation command, and grants full points only when the final line is <code>{'{"ok":true}'}</code>.
               </p>
             </div>
 
