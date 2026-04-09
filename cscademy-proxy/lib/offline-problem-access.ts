@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { getTrackAccess } from "@/lib/tracks/access";
 
 export const OFFLINE_HEARTBEAT_TIMEOUT_MS = 15000;
 
@@ -25,6 +26,17 @@ export async function getRuntimeProblemAccess(
   trackSlug: string,
   problemSlug: string
 ) {
+  const trackAccess = await getTrackAccess(convex, trackSlug);
+
+  if (!trackAccess || !trackAccess.isVisible) {
+    return {
+      allowed: false as const,
+      reason: "not_found" as const,
+      problem: null,
+      session: null,
+    };
+  }
+
   const problem = await convex.query(api.trackProblems.getBySlug, {
     trackSlug,
     slug: problemSlug,

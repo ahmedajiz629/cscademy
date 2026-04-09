@@ -4,6 +4,7 @@ import { getConvexClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { isOfflineSessionStale } from "@/lib/offline-problem-access";
+import { getTrackAccess } from "@/lib/tracks/access";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,11 @@ export async function GET(
   const { trackId } = await params;
   const userId = auth.userId as Id<"users">;
   const convex = getConvexClient();
+  const trackAccess = await getTrackAccess(convex, trackId);
+
+  if (!trackAccess || !trackAccess.isVisible) {
+    return NextResponse.json({ error: "Track not found" }, { status: 404 });
+  }
 
   const [problems, sessions] = await Promise.all([
     convex.query(api.trackProblems.listByTrack, { trackSlug: trackId }),

@@ -6,6 +6,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { isOfflineSessionStale } from "@/lib/offline-problem-access";
 import { resolveOfflineGatewayUrl } from "@/lib/offline-gateway";
 import { getOfflineProbeImageUrl } from "@/lib/offline-anti-cheat-server";
+import { getTrackAccess } from "@/lib/tracks/access";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,11 @@ export async function GET(
   const { trackId, problemId } = await params;
   const userId = auth.userId as Id<"users">;
   const convex = getConvexClient();
+  const trackAccess = await getTrackAccess(convex, trackId);
+
+  if (!trackAccess || !trackAccess.isVisible) {
+    return NextResponse.json({ error: "Problem not found" }, { status: 404 });
+  }
 
   const [problem, session] = await Promise.all([
     convex.query(api.trackProblems.getBySlug, {
