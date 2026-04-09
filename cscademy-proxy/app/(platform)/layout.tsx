@@ -51,7 +51,7 @@ export default function DashboardLayout({
       <aside className="w-56 bg-[#111127] border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
           <Link href="/dashboard" className="text-lg font-bold text-white">
-            CSCademy
+            Ajiz Tech Challenge
           </Link>
         </div>
 

@@ -7,7 +7,7 @@ const GATEWAY_SECRET =
   process.env.OFFLINE_GATEWAY_SECRET || process.env.JWT_SECRET;
 const HOST = process.env.OFFLINE_GATEWAY_HOST || "0.0.0.0";
 const PORT = Number(process.env.OFFLINE_GATEWAY_PORT || 8787);
-const ISSUER = "cscademy-proxy";
+const ISSUER = "ajiz-tech-challenge";
 const AUDIENCE = "offline-gateway";
 const HEARTBEAT_INTERVAL_MS = 5000;
 

@@ -1,134 +1,62 @@
-# CS Academy Proxy — Next.js + Convex
+# Ajiz Tech Challenge
 
-A local web application that lets you write, test (Run), and submit code on
-[CS Academy](https://csacademy.com) through a proxy server. Built with
-**Next.js 15** (App Router) and **Convex** for real-time data.
+Ajiz Tech Challenge is a track-based programming challenge platform built with Next.js and Convex. It includes student challenge pages, admin management for users and problems, offline LAN-gated tasks, and a backend integration layer for external code evaluation.
 
-## Architecture
+## Core Capabilities
 
-```
-┌───────────────────────────────────────────────────┐
-│  Browser (Next.js Frontend)                       │
-│  ┌─────────────┬──────────────┬──────────────────┐│
-│  │ Problem List│ Code Editor  │ Input / Output   ││
-│  │ (Convex)    │ (CodeMirror) │                  ││
-│  └──────┬──────┴──────┬───────┴────────┬─────────┘│
-│         │ Convex Queries  API Routes (fetch)      │
-└─────────┼─────────────────────┼───────────────────┘
-          │                     │
-    ┌─────▼──────┐   ┌─────────▼──────────┐
-    │ Convex DB  │   │ Next.js API Routes  │
-    │ (problems, │   │ /api/csacademy/*    │
-    │ submissions│   │                     │
-    │ )          │   │ ┌─────────────────┐ │
-    └────────────┘   │ │ CSAcademy       │ │
-                     │ │ Service         │ │
-                     │ │ (HTTP + WS)     │ │
-                     │ └────────┬────────┘ │
-                     └──────────┼──────────┘
-                                │
-                     ┌──────────▼──────────┐
-                     │  csacademy.com      │
-                     │  (API + WebSocket)  │
-                     └─────────────────────┘
-```
+- Track-based challenge delivery with per-problem scoring.
+- Admin tools for users, tracks, languages, and problem configuration.
+- Offline tasks gated by a local WebSocket gateway.
+- Incident tracking and silent anti-cheat reporting for offline sessions.
+- Reactive Convex-powered pages for track and problem availability.
 
-## Quick Start
+## Development
+
+Run these commands from the project folder:
 
 ```bash
-# 1. Install dependencies
-cd cscademy-proxy
-npm install
-
-# 2. Set up Convex (optional — problems work without it)
-npx convex dev
-# Follow prompts to create a new project, then copy the URL to .env.local
-
-# 3. Configure credentials (already in .env.local)
-# CSACADEMY_EMAIL=your@email.com
-# CSACADEMY_PASSWORD=your_password
-# OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL=https://static-check.example/icon.ico
-
-# 4. Run the development server
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## How It Works
-
-1. **Click "Connect"** — logs into CSAcademy using the credentials from
-   `.env.local`, establishes a WebSocket connection for receiving results.
-
-2. **Select a problem** from the dropdown on the left panel.
-
-3. **Write your solution** in the code editor (C++ with syntax highlighting).
-
-4. **Run Code** (`Ctrl+Enter`) — executes your code with the custom input and
-   shows stdout/stderr in the output panel.
-
-5. **Submit Solution** (`Ctrl+Shift+Enter`) — submits your code for official
-   evaluation and shows the score and per-test results.
-
-## Project Structure
-
-```
-cscademy-proxy/
-├── app/
-│   ├── layout.tsx          # Root layout with Convex provider
-│   ├── page.tsx            # Main IDE page
-│   ├── globals.css         # Tailwind + custom styles
-│   ├── providers.tsx       # Convex client provider
-│   └── api/csacademy/
-│       ├── login/route.ts  # POST: login to CSAcademy
-│       ├── run/route.ts    # POST: run code with custom input
-│       └── submit/route.ts # POST: submit for evaluation
-├── components/
-│   ├── CodeEditor.tsx      # CodeMirror 6 editor
-│   ├── ProblemPanel.tsx    # Problem selector & description
-│   └── OutputPanel.tsx     # Output display with score
-├── convex/
-│   ├── schema.ts           # DB schema (problems, submissions)
-│   ├── problems.ts         # Problem CRUD + seed function
-│   └── submissions.ts      # Submission tracking
-├── lib/
-│   └── csacademy.ts        # CSAcademy API service (login, WS, run, submit)
-├── .env.local              # Credentials & Convex URL
-└── package.json
-```
-
-## Keyboard Shortcuts
-
-| Shortcut             | Action          |
-| -------------------- | --------------- |
-| `Ctrl + Enter`       | Run code        |
-| `Ctrl + Shift + Enter` | Submit solution |
-
-## Adding Problems
-
-Edit the `DEFAULT_PROBLEMS` array in `app/page.tsx` or use the Convex dashboard
-to add problems to the database. Each problem needs:
-
-- `slug` — unique identifier
-- `name` — display name
-- `contestTaskId` — CSAcademy task ID (from the URL)
-- `referer` — full CSAcademy task URL
-- `description`, `starterCode`, `sampleInput`, `sampleOutput`
-
-## Convex Setup (Optional)
-
-Convex provides real-time database and is used for persistent problem/submission
-storage. The app works without Convex (uses hardcoded problems).
+For a production build:
 
 ```bash
-npx convex dev
-# Creates a Convex project and gives you a deployment URL
-# Add to .env.local:
-# NEXT_PUBLIC_CONVEX_URL=https://your-project.convex.cloud
-# OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL=https://static-check.example/icon.ico
+pnpm build
 ```
 
-Then seed problems:
+To run the offline gateway:
+
 ```bash
-npx convex run problems:seed
+pnpm run offline-gateway
 ```
+
+## Environment
+
+The project expects these environment variables:
+
+- `NEXT_PUBLIC_CONVEX_URL`
+- `JWT_SECRET`
+- `OFFLINE_GATEWAY_SECRET` or `JWT_SECRET`
+- `OFFLINE_GATEWAY_URL` or `OFFLINE_GATEWAY_PORT`
+- `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
+
+External evaluation account credentials are linked per user from the admin interface.
+
+## Architecture Notes
+
+- App Router handles the web UI and internal API routes.
+- Convex stores users, track settings, problems, languages, scores, and offline session state.
+- The offline gateway maintains live LAN presence for offline tasks.
+- The algorithmics track currently uses the external judge integration for run and submit actions.
+
+## Seeding and Tooling
+
+Useful commands:
+
+```bash
+pnpm exec convex codegen
+node ./scripts/seed.mjs
+```
+
+The seed script creates sample users, languages, and algorithmics problems for local development.

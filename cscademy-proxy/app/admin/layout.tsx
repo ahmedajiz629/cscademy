@@ -54,7 +54,7 @@ export default function AdminLayout({
       <aside className="w-56 bg-[#111127] border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
           <Link href="/admin" className="text-lg font-bold text-white">
-            CSCademy <span className="text-xs text-gray-500">Admin</span>
+            Ajiz Tech Challenge <span className="text-xs text-gray-500">Admin</span>
           </Link>
         </div>
 

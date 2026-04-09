@@ -354,7 +354,7 @@ export default function AdminUsersPage() {
 
               <div className="pt-3 border-t border-gray-800">
                 <p className="text-xs text-gray-500 mb-2">
-                  CSAcademy Account (linked transparently)
+                  Evaluation Account (linked transparently)
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -362,7 +362,7 @@ export default function AdminUsersPage() {
                     onChange={(e) =>
                       setForm({ ...form, csaEmail: e.target.value })
                     }
-                    placeholder="CSA email/username"
+                    placeholder="Judge email or username"
                     className="flex-1 px-3 py-2 bg-[#1a1a2e] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                   <input
@@ -371,7 +371,7 @@ export default function AdminUsersPage() {
                     onChange={(e) =>
                       setForm({ ...form, csaPassword: e.target.value })
                     }
-                    placeholder="CSA password"
+                    placeholder="Judge password"
                     className="flex-1 px-3 py-2 bg-[#1a1a2e] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>

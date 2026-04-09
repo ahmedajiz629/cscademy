@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     });
     if (!csaAccount) {
       return NextResponse.json(
-        { error: "No CSAcademy account linked. Contact your administrator." },
+        { error: "No evaluation account linked. Contact your administrator." },
         { status: 400 }
       );
     }
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     if (!access.problem.contestTaskId) {
       return NextResponse.json(
-        { error: "Problem is missing contestTaskId configuration" },
+        { error: "Problem is missing judge task configuration" },
         { status: 400 }
       );
     }

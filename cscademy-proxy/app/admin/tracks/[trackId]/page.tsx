@@ -198,7 +198,7 @@ export default function AdminTrackDetailPage() {
         ) : (
           <p className="text-sm text-gray-500">Loading…</p>
         )}
-        <p className="text-xs text-gray-600 mt-1">Languages are seeded from CSAcademy and cannot be edited here.</p>
+        <p className="text-xs text-gray-600 mt-1">Languages are seeded from the evaluation provider and cannot be edited here.</p>
       </div>
 
       {/* Problems section */}
@@ -307,7 +307,7 @@ export default function AdminTrackDetailPage() {
               />
             </div>
             <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">CSAcademy Task ID</label>
+              <label className="block text-xs text-gray-400 mb-1">Judge Task ID</label>
               <input
                 type="number"
                 value={form.contestTaskId}
@@ -317,12 +317,12 @@ export default function AdminTrackDetailPage() {
               />
             </div>
             <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Referer URL</label>
+              <label className="block text-xs text-gray-400 mb-1">Source URL</label>
               <input
                 value={form.referer}
                 onChange={(e) => setForm({ ...form, referer: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="https://csacademy.com/…"
+                placeholder="https://problem-source.example/..."
               />
             </div>
           </div>

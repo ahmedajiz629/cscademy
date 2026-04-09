@@ -215,19 +215,19 @@ async function seed() {
   try {
     const adminId = await client.mutation("users:create", {
       name: "Admin",
-      email: "admin@cscademy.com",
+      email: "admin@ajiz.tech",
       passwordHash: adminHash,
       role: "admin",
     });
     console.log("✓ Admin user created:", adminId);
 
-    // Link CSAcademy account to admin (for testing)
+    // Link the evaluation account to the admin user for testing.
     await client.mutation("csacademyAccounts:upsert", {
       userId: adminId,
       csaEmail: "binoz.daop@gmail.com",
       csaPassword: "aAaA1&1&",
     });
-    console.log("✓ CSAcademy account linked to admin");
+    console.log("✓ Evaluation account linked to admin");
   } catch (e) {
     console.log("Admin user might already exist:", e.message);
   }
@@ -237,7 +237,7 @@ async function seed() {
   try {
     const studentId = await client.mutation("users:create", {
       name: "Test Student",
-      email: "student@cscademy.com",
+      email: "student@ajiz.tech",
       passwordHash: studentHash,
       role: "student",
     });
@@ -282,8 +282,8 @@ async function seed() {
   }
 
   console.log("\n=== Seed complete ===");
-  console.log("Admin login:   admin@cscademy.com / admin123");
-  console.log("Student login: student@cscademy.com / student123");
+  console.log("Admin login:   admin@ajiz.tech / admin123");
+  console.log("Student login: student@ajiz.tech / student123");
   console.log(`Languages seeded: ${languages.length}`);
   console.log(`Problems seeded: ${problems.length}`);
 }

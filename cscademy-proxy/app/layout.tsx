@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "CSCademy Platform",
-  description: "Programming test platform",
+  title: "Ajiz Tech Challenge",
+  description: "Programming challenge platform",
 };
 
 export default function RootLayout({

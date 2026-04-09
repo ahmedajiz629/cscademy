@@ -13,14 +13,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Look up user's linked CSAcademy account
+    // Look up the user's linked evaluation account.
     const convex = getConvexClient();
     const csaAccount = await convex.query(api.csacademyAccounts.getByUserId, {
       userId: auth.userId as Id<"users">,
     });
     if (!csaAccount) {
       return NextResponse.json(
-        { error: "No CSAcademy account linked. Contact your administrator." },
+        { error: "No evaluation account linked. Contact your administrator." },
         { status: 400 }
       );
     }
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     if (!access.problem.contestTaskId) {
       return NextResponse.json(
-        { error: "Problem is missing contestTaskId configuration" },
+        { error: "Problem is missing judge task configuration" },
         { status: 400 }
       );
     }

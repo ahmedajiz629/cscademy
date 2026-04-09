@@ -14,7 +14,7 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_email", ["email"]),
 
-  // Linked CSAcademy accounts (one per user, hidden from students)
+  // Linked evaluation accounts (one per user, hidden from students)
   csacademyAccounts: defineTable({
     userId: v.id("users"),
     csaEmail: v.string(),
@@ -66,7 +66,7 @@ export default defineSchema({
     .index("by_user_track", ["userId", "trackSlug"])
     .index("by_sessionId", ["sessionId"]),
 
-  // Programming languages available per track (seeded from CSAcademy)
+  // Programming languages available per track (seeded from the evaluation provider)
   programmingLanguages: defineTable({
     trackSlug: v.string(),
     langId: v.string(),

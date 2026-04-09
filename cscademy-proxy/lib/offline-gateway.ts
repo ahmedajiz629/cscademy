@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 
 const DEFAULT_OFFLINE_GATEWAY_PORT = "8787";
 const OFFLINE_GATEWAY_AUDIENCE = "offline-gateway";
-const OFFLINE_GATEWAY_ISSUER = "cscademy-proxy";
+const OFFLINE_GATEWAY_ISSUER = "ajiz-tech-challenge";
 
 export interface OfflineGatewayTokenPayload {
   userId: string;

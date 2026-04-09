@@ -1,7 +1,7 @@
 /**
  * A track module. Each track is a code unit — not a DB entry.
  * Different tracks can have entirely different backend logic
- * (CSAcademy proxy, CTF engine, git challenges, etc.)
+ * (external judge integration, CTF engine, git challenges, etc.)
  *
  * Track content (problems, languages) lives in the database
  * and is populated by the seeder.
