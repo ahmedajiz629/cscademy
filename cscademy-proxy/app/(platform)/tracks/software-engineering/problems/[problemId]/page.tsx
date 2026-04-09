@@ -29,7 +29,7 @@ interface EvaluationResult {
 }
 
 const SUBMISSION_STEPS = [
-  "Clone the public starter repository locally and make the required changes.",
+  "Clone the public starter repository shown below and make the required changes.",
   "Push your work to a private GitHub repository that you control.",
   "Create a fine-grained GitHub token with contents:read access to that repository.",
   "Submit the private repository URL, token, and challenge branch here for evaluation.",
@@ -69,11 +69,20 @@ function buildLocalCommand({
     "-e",
     quoteCommandValue(`SUBMISSION_REF=${normalizedSubmissionRef}`),
     "-e",
-    quoteCommandValue(`BASE_COMMIT=${normalizedBaseCommit}`),
+    quoteCommandValue(`BASE_COMMIT=${normalizedBaseCommit.slice(0, 7)}`),
     "-e",
     quoteCommandValue(`ACCESS_TOKEN=${normalizedToken}`),
     normalizedImage,
   ].join(" ");
+}
+
+function buildCloneCommand(publicRepositoryUrl?: string): string | null {
+  const normalizedUrl = publicRepositoryUrl?.trim();
+  if (!normalizedUrl) {
+    return null;
+  }
+
+  return `git clone ${quoteCommandValue(normalizedUrl)}`;
 }
 
 function buildSummaryLines(result: EvaluationResult): string[] {
@@ -240,6 +249,7 @@ export default function SoftwareEngineeringProblemPage() {
 
   const canEvaluate =
     !!repoUrl.trim() && !!accessToken.trim() && !!submissionRef.trim();
+  const cloneCommand = buildCloneCommand(problem.publicRepositoryUrl);
   const localCommand = buildLocalCommand({
     repoUrl,
     submissionRef: submissionRef.trim() || problem.defaultSubmissionRef || "challenge",
@@ -283,6 +293,49 @@ export default function SoftwareEngineeringProblemPage() {
               </div>
             </div>
 
+            {problem.publicRepositoryUrl && (
+              <div className="mt-6 rounded-xl border border-cyan-500/20 bg-[linear-gradient(135deg,rgba(8,145,178,0.18),rgba(17,24,39,0.45))] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs uppercase tracking-[0.2em] text-cyan-300 mb-2">
+                      Public Starter Repository
+                    </p>
+                    <a
+                      href={problem.publicRepositoryUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-white hover:text-cyan-100 break-all transition-colors"
+                    >
+                      {problem.publicRepositoryUrl}
+                    </a>
+                  </div>
+                  <a
+                    href={problem.publicRepositoryUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/20 transition-colors"
+                  >
+                    Open Repository
+                  </a>
+                </div>
+
+                {cloneCommand && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                      Clone Command
+                    </p>
+                    <textarea
+                      readOnly
+                      rows={2}
+                      spellCheck={false}
+                      value={cloneCommand}
+                      className="w-full resize-none rounded-xl border border-gray-700 bg-[#0b1324] px-4 py-3 text-sm font-mono text-white focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 rounded-xl border border-gray-800 bg-[#0c0c1d] p-4">
               <p className="text-sm text-gray-300 whitespace-pre-wrap leading-7">
                 {problem.description}
@@ -295,7 +348,7 @@ export default function SoftwareEngineeringProblemPage() {
               label="Default Branch"
               value={problem.defaultSubmissionRef || "challenge"}
             />
-            <InfoCard label="Base Commit" value={problem.baseCommit || "Not configured"} />
+            <InfoCard label="Base Commit" value={problem.baseCommit?.slice(0, 7) || "Not configured"} />
             <InfoCard
               label="Docker Image"
               value={problem.evaluationImage || "Not configured"}

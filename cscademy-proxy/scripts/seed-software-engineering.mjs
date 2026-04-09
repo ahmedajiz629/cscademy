@@ -33,9 +33,6 @@ const problem = {
   name: "Visitor Pattern Challenge",
   description: `Clone the public starter repository, implement the required fixes, and make the test suite pass.
 
-Public starter repository
-https://github.com/ajiz-org/software-engineering-challenge
-
 Workflow
 1. Clone the public starter repository locally.
 2. Work on the task until the tests pass.
@@ -58,6 +55,7 @@ Result rules
 - {"status":"failed","reason":"tests failed"} means evaluation completed but the tests did not pass`,
   points: 100,
   order: 1,
+  publicRepositoryUrl: "https://github.com/ajiz-org/software-engineering-challenge",
   evaluationImage: "ajiztech/challenge-1",
   baseCommit: "fe8afb3ab6564b1af14b8c1a80e78bd3668868be",
   defaultSubmissionRef: "main",
@@ -85,6 +83,7 @@ async function seedSoftwareEngineeringTrack() {
       description: problem.description,
       points: problem.points,
       order: problem.order,
+      publicRepositoryUrl: problem.publicRepositoryUrl,
       evaluationImage: problem.evaluationImage,
       baseCommit: problem.baseCommit,
       defaultSubmissionRef: problem.defaultSubmissionRef,

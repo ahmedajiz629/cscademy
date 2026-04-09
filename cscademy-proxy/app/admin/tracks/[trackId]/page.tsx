@@ -22,6 +22,7 @@ type Problem = {
   starterCode?: string;
   isActive?: boolean;
   isOffline?: boolean;
+  publicRepositoryUrl?: string;
   evaluationImage?: string;
   baseCommit?: string;
   defaultSubmissionRef?: string;
@@ -37,6 +38,7 @@ const EMPTY_FORM = {
   sampleOutput: "",
   contestTaskId: "",
   referer: "",
+  publicRepositoryUrl: "",
   evaluationImage: "",
   baseCommit: "",
   defaultSubmissionRef: "challenge",
@@ -72,7 +74,9 @@ export default function AdminTrackDetailPage() {
     !!form.description.trim() &&
     (mode !== "add" || !!form.slug.trim()) &&
     (!isSoftwareEngineeringTrack ||
-      (!!form.evaluationImage.trim() && !!form.baseCommit.trim()));
+      (!!form.publicRepositoryUrl.trim() &&
+        !!form.evaluationImage.trim() &&
+        !!form.baseCommit.trim()));
 
   const isActive = settings !== undefined
     ? (settings?.isActive ?? (track?.isActive ?? true))
@@ -105,6 +109,7 @@ export default function AdminTrackDetailPage() {
       sampleOutput: p.sampleOutput ?? "",
       contestTaskId: p.contestTaskId !== undefined ? String(p.contestTaskId) : "",
       referer: p.referer ?? "",
+      publicRepositoryUrl: p.publicRepositoryUrl ?? "",
       evaluationImage: p.evaluationImage ?? "",
       baseCommit: p.baseCommit ?? "",
       defaultSubmissionRef: p.defaultSubmissionRef ?? "challenge",
@@ -124,6 +129,9 @@ export default function AdminTrackDetailPage() {
     try {
       const contestTaskId = !isSoftwareEngineeringTrack && form.contestTaskId
         ? parseInt(form.contestTaskId)
+        : undefined;
+      const publicRepositoryUrl = isSoftwareEngineeringTrack
+        ? form.publicRepositoryUrl.trim() || undefined
         : undefined;
       const evaluationImage = isSoftwareEngineeringTrack
         ? form.evaluationImage.trim() || undefined
@@ -151,6 +159,7 @@ export default function AdminTrackDetailPage() {
             : form.sampleOutput || undefined,
           contestTaskId,
           referer: isSoftwareEngineeringTrack ? undefined : form.referer || undefined,
+          publicRepositoryUrl,
           evaluationImage,
           baseCommit,
           defaultSubmissionRef,
@@ -171,6 +180,7 @@ export default function AdminTrackDetailPage() {
             : form.sampleOutput || undefined,
           contestTaskId,
           referer: isSoftwareEngineeringTrack ? undefined : form.referer || undefined,
+          publicRepositoryUrl,
           evaluationImage,
           baseCommit,
           defaultSubmissionRef,
@@ -362,6 +372,15 @@ export default function AdminTrackDetailPage() {
             </div>
             {isSoftwareEngineeringTrack ? (
               <>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Public Repository URL</label>
+                  <input
+                    value={form.publicRepositoryUrl}
+                    onChange={(e) => setForm({ ...form, publicRepositoryUrl: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="https://github.com/ajiz-org/software-engineering-challenge"
+                  />
+                </div>
                 <div className="col-span-1">
                   <label className="block text-xs text-gray-400 mb-1">Docker Image</label>
                   <input
@@ -374,7 +393,7 @@ export default function AdminTrackDetailPage() {
                 <div className="col-span-1">
                   <label className="block text-xs text-gray-400 mb-1">Base Commit</label>
                   <input
-                    value={form.baseCommit.slice(0, 7)}
+                    value={form.baseCommit}
                     onChange={(e) => setForm({ ...form, baseCommit: e.target.value })}
                     className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                     placeholder="fe8afb"
@@ -391,9 +410,9 @@ export default function AdminTrackDetailPage() {
                     placeholder="challenge"
                   />
                 </div>
-                <div className="col-span-1 flex items-end">
+                <div className="col-span-2">
                   <p className="text-xs text-gray-500">
-                    Students provide the repository URL, branch, and GitHub token at submission time.
+                    Students clone the public repository above, then submit a private repository URL, branch, and GitHub token at evaluation time.
                   </p>
                 </div>
               </>

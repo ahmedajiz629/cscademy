@@ -288,7 +288,7 @@ export async function runSoftwareEngineeringEvaluation(
         "-e",
         `SUBMISSION_REF=${config.submissionRef}`,
         "-e",
-        `BASE_COMMIT=${config.baseCommit.slice(0, 7)}`,
+        `BASE_COMMIT=${config.baseCommit}`,
         "-e",
         `ACCESS_TOKEN=${config.accessToken}`,
         config.image,

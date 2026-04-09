@@ -34,6 +34,7 @@ export default defineSchema({
     starterCode: v.optional(v.string()), // JSON Record<langId, code>
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    publicRepositoryUrl: v.optional(v.string()),
     evaluationImage: v.optional(v.string()),
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
