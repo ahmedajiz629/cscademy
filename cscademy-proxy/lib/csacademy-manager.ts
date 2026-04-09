@@ -5,7 +5,7 @@
  * Preserves the working login flow:
  *   1. GET https://csacademy.com/  → csrftoken cookie
  *   2. POST /accounts/login/       → username+password (form), success+cookies
- *   3. GET /workspace/              → JSON with state.Workspace[{id,userId}]
+ *   3. GET /workspace/list/         → JSON with state.Workspace[{id,userId}]
  *   4. WebSocket wss://ws3.csacademy.com/ → subscribe channels
  */
 import WebSocket from "ws";
@@ -102,6 +102,8 @@ export class CSAcademySession {
   workspaceId = "";
   private ws: WebSocket | null = null;
   wsConnected = false;
+  private wsUserId = "";
+  private wsSessionId = "";
   loggedIn = false;
   private loginPromise: Promise<void> | null = null;
   private resultsCache: Record<string, any> = {};
@@ -119,7 +121,27 @@ export class CSAcademySession {
   // ── Ensure logged in (deduplicated) ─────────────────────────
 
   async ensureLoggedIn(): Promise<void> {
-    if (this.loggedIn) return;
+    if (this.loggedIn) {
+      if (this.workspaceId && this.userId) {
+        return;
+      }
+
+      console.log(this.tag("Session missing workspace/user, attempting recovery..."));
+      try {
+        await this.recoverSessionState();
+      } catch (error: any) {
+        console.error(this.tag("Session recovery failed: " + error.message));
+      }
+
+      if (this.workspaceId && this.userId) {
+        return;
+      }
+
+      console.log(this.tag("Session recovery incomplete, re-authenticating..."));
+      this.loggedIn = false;
+      this.disconnectWebSocket();
+    }
+
     if (this.loginPromise) return this.loginPromise;
     this.loginPromise = this._login().finally(() => {
       this.loginPromise = null;
@@ -194,30 +216,17 @@ export class CSAcademySession {
       allCookies = { ...allCookies, ...rCookies };
     }
 
-    // Step 3: GET /workspace/ with XHR → JSON {state: {Workspace: [...]}}
+    // Step 3: GET /workspace/list/ with XHR → JSON {state: {Workspace: [...]}}
     const updatedCsrf = allCookies["csrftoken"] || csrfToken;
     const cookieStr = cookieString(allCookies);
 
     try {
-      const wsRes = await fetchRetry(
-        "https://csacademy.com/workspace/",
-        {
-          headers: {
-            "User-Agent": USER_AGENT,
-            Cookie: cookieStr,
-            "X-CSRFToken": updatedCsrf,
-            "X-Requested-With": "XMLHttpRequest",
-            Accept: "application/json",
-          },
-        },
-        { label: this.tag("GET workspace"), retries: 2 }
-      );
-      if (wsRes.ok) {
-        const wsData = await wsRes.json();
-        const workspaces = wsData?.state?.Workspace || [];
-        if (workspaces.length > 0) {
-          this.workspaceId = String(workspaces[0].id || "");
-          this.userId = String(workspaces[0].userId || "");
+      await this.refreshWorkspace(cookieStr, updatedCsrf);
+      if (!this.workspaceId) {
+        const createdWorkspaceId = await this.createWorkspace(cookieStr, updatedCsrf);
+        if (createdWorkspaceId) {
+          this.workspaceId = createdWorkspaceId;
+          await this.refreshWorkspace(cookieStr, updatedCsrf);
         }
       }
     } catch (e: any) {
@@ -227,14 +236,7 @@ export class CSAcademySession {
     // Fallback: get userId from homepage HTML
     if (!this.userId) {
       try {
-        const homeRes = await fetchRetry(
-          "https://csacademy.com/",
-          { headers: { "User-Agent": USER_AGENT, Cookie: cookieStr, Accept: "text/html" } },
-          { label: this.tag("GET homepage for userId"), retries: 2 }
-        );
-        const html = await homeRes.text();
-        const m = html.match(/"id"\s*:\s*(\d+)/);
-        if (m) this.userId = m[1];
+        await this.refreshUserIdFromHomepage(cookieStr);
       } catch { /* ignore */ }
     }
 
@@ -254,6 +256,109 @@ export class CSAcademySession {
     console.log(this.tag("WebSocket ready, session fully initialized"));
   }
 
+  private async recoverSessionState(): Promise<void> {
+    if (!this.cookies || !this.csrfToken) {
+      throw new Error("Missing session cookies");
+    }
+
+    await this.refreshWorkspace(this.cookies, this.csrfToken);
+    if (!this.workspaceId) {
+      const createdWorkspaceId = await this.createWorkspace(this.cookies, this.csrfToken);
+      if (createdWorkspaceId) {
+        this.workspaceId = createdWorkspaceId;
+        await this.refreshWorkspace(this.cookies, this.csrfToken);
+      }
+    }
+
+    if (!this.userId) {
+      await this.refreshUserIdFromHomepage(this.cookies);
+    }
+  }
+
+  private async refreshUserIdFromHomepage(cookieStr: string): Promise<void> {
+    const homeRes = await fetchRetry(
+      "https://csacademy.com/",
+      { headers: { "User-Agent": USER_AGENT, Cookie: cookieStr, Accept: "text/html" } },
+      { label: this.tag("GET homepage for userId"), retries: 2 }
+    );
+    const html = await homeRes.text();
+    const m = html.match(/var\s+USER\s*=\s*\{[^}]*"id"\s*:\s*(\d+)/);
+    if (m) {
+      this.userId = m[1];
+    }
+  }
+
+  private async refreshWorkspace(cookieStr: string, csrfToken: string): Promise<void> {
+    const wsRes = await fetchRetry(
+      "https://csacademy.com/workspace/list/",
+      {
+        headers: {
+          "User-Agent": USER_AGENT,
+          Cookie: cookieStr,
+          "X-CSRFToken": csrfToken,
+          "X-Requested-With": "XMLHttpRequest",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+          Referer: "https://csacademy.com/workspace/",
+        },
+      },
+      { label: this.tag("GET workspace list"), retries: 2 }
+    );
+
+    if (!wsRes.ok) {
+      throw new Error(`workspace list failed (HTTP ${wsRes.status})`);
+    }
+
+    const wsData = await wsRes.json();
+    const workspaces = Array.isArray(wsData?.state?.Workspace) ? wsData.state.Workspace : [];
+    if (workspaces.length === 0) {
+      this.workspaceId = "";
+      return;
+    }
+
+    const workspace = [...workspaces].sort(
+      (left, right) => Number(right?.lastModified || 0) - Number(left?.lastModified || 0)
+    )[0];
+
+    this.workspaceId = String(workspace?.id || "");
+    if (workspace?.userId) {
+      this.userId = String(workspace.userId);
+    }
+  }
+
+  private async createWorkspace(cookieStr: string, csrfToken: string): Promise<string> {
+    const createRes = await fetchRetry(
+      "https://csacademy.com/workspace/create/",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": USER_AGENT,
+          Cookie: cookieStr,
+          "X-CSRFToken": csrfToken,
+          "X-Requested-With": "XMLHttpRequest",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+          Referer: "https://csacademy.com/workspace/",
+          Origin: "https://csacademy.com",
+        },
+        body: new URLSearchParams({
+          name: "Ajiz Tech Challenge",
+        }).toString(),
+      },
+      { label: this.tag("POST workspace create"), retries: 2 }
+    );
+
+    if (!createRes.ok) {
+      throw new Error(`workspace create failed (HTTP ${createRes.status})`);
+    }
+
+    const createData = await createRes.json();
+    if (createData?.error) {
+      throw new Error(createData.error.message || JSON.stringify(createData.error));
+    }
+
+    return String(createData?.workspaceId || "");
+  }
+
   // ── Build headers ───────────────────────────────────────────
 
   private baseHeaders(): Record<string, string> {
@@ -271,7 +376,10 @@ export class CSAcademySession {
   // ── WebSocket ───────────────────────────────────────────────
 
   private connectWebSocket(): Promise<void> {
-    if (this.ws && this.wsConnected) return Promise.resolve();
+    if (this.hasCurrentWebSocketSession()) return Promise.resolve();
+    if (this.ws) {
+      this.disconnectWebSocket();
+    }
 
     return new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -289,6 +397,8 @@ export class CSAcademySession {
 
       this.ws.on("open", () => {
         this.wsConnected = true;
+        this.wsUserId = this.userId;
+        this.wsSessionId = this.sessionId;
         clearTimeout(timeout);
         console.log(this.tag("WS CONNECTED"));
         if (!this.ws) { resolve(); return; }
@@ -368,6 +478,9 @@ export class CSAcademySession {
 
       this.ws.on("close", () => {
         this.wsConnected = false;
+        this.wsUserId = "";
+        this.wsSessionId = "";
+        this.ws = null;
         console.log(this.tag("WS disconnected, reconnecting in 2s..."));
         setTimeout(() => this.reconnectWebSocket(), 2000);
       });
@@ -387,9 +500,33 @@ export class CSAcademySession {
     });
   }
 
+  private disconnectWebSocket() {
+    const socket = this.ws;
+    this.ws = null;
+    this.wsConnected = false;
+    this.wsUserId = "";
+    this.wsSessionId = "";
+    if (!socket) {
+      return;
+    }
+
+    socket.removeAllListeners();
+    try {
+      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    } catch {
+      // Ignore socket shutdown errors during forced reconnects.
+    }
+  }
+
+  private hasCurrentWebSocketSession(): boolean {
+    return this.wsConnected && this.wsUserId === this.userId && this.wsSessionId === this.sessionId;
+  }
+
   /** Wait until WebSocket is connected (reconnect if needed) */
   private async ensureWsConnected(): Promise<void> {
-    if (this.wsConnected) return;
+    if (this.hasCurrentWebSocketSession()) return;
     console.log(this.tag("WS not connected, reconnecting..."));
     await this.connectWebSocket();
   }
