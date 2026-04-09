@@ -215,8 +215,8 @@ export default function LogicReverseEngineeringProblemPage() {
         </Link>
       </div>
 
-      <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[1fr_1fr]">
-        <section className="space-y-6">
+      <div className="flex min-w-0 flex-col gap-6 xl:grid xl:grid-cols-[1fr_1fr]">
+        <section className="min-w-0 space-y-6">
           <div className="rounded-2xl border border-gray-800 bg-[#111127] p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -283,7 +283,7 @@ export default function LogicReverseEngineeringProblemPage() {
           </div>
         </section>
 
-        <section className="space-y-6">
+        <section className="min-w-0 space-y-6">
           <div className="rounded-2xl border border-gray-800 bg-[#111127] p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -301,7 +301,7 @@ export default function LogicReverseEngineeringProblemPage() {
               </button>
             </div>
 
-            <div className="mt-6 h-[320px] overflow-hidden rounded-xl border border-gray-800 bg-[#0c0c1d]">
+            <div className="mt-6 h-[320px] min-w-0 overflow-hidden rounded-xl border border-gray-800 bg-[#0c0c1d]">
               <CodeEditor
                 value={submission}
                 onChange={setSubmission}

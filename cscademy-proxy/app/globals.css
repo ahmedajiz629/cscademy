@@ -14,10 +14,14 @@ body {
 /* CodeMirror overrides */
 .cm-editor {
   height: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   font-size: 14px !important;
 }
 
 .cm-editor .cm-scroller {
+  min-width: 0 !important;
+  max-width: 100% !important;
   overflow: auto !important;
 }
 
@@ -47,5 +51,5 @@ textarea {
 
 textarea:focus {
   outline: none;
-  ring: 2px;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
 }

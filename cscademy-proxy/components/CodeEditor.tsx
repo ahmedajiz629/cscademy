@@ -59,8 +59,8 @@ export default function CodeEditor({
 
   if (!loaded || !CodeMirrorComponent) {
     return (
-      <div className="w-full h-full bg-[#282c34] rounded-lg p-4 font-mono text-sm text-gray-400">
-        <pre className="whitespace-pre-wrap">{value}</pre>
+      <div className="h-full w-full min-w-0 max-w-full overflow-auto rounded-lg bg-[#282c34] p-4 font-mono text-sm text-gray-400">
+        <pre className="break-all whitespace-pre-wrap">{value}</pre>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export default function CodeEditor({
       theme={oneDarkTheme}
       extensions={extensions}
       onChange={handleChange}
-      className="h-full overflow-auto rounded-lg text-sm"
+      className="h-full min-w-0 max-w-full overflow-auto rounded-lg text-sm"
       basicSetup={{
         lineNumbers: true,
         highlightActiveLineGutter: true,
