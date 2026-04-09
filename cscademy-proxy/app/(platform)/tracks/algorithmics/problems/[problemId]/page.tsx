@@ -6,7 +6,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { getTrack } from "@/lib/tracks";
+import track from "@/lib/tracks/algorithmics";
 import {
   buildOfflineProbeUrl,
   formatOfflineClosedReason,
@@ -68,12 +68,11 @@ function toOfflineProblemPreview(
   };
 }
 
-export default function ProblemIDEPage() {
+export default function AlgorithmicsProblemIDEPage() {
   const params = useParams();
-  const trackId = params.trackId as string;
+  const trackId = track.id;
   const problemId = params.problemId as string;
 
-  const track = getTrack(trackId);
   const languages = useQuery(api.programmingLanguages.listByTrack, {
     trackSlug: trackId,
   });
@@ -115,7 +114,7 @@ export default function ProblemIDEPage() {
 
   const loadProblem = useCallback(async () => {
     try {
-      const response = await fetch(`/api/tracks/${trackId}/problems/${problemId}`, {
+      const response = await fetch(track.buildProblemApiPath(problemId), {
         cache: "no-store",
       });
 
@@ -151,7 +150,7 @@ export default function ProblemIDEPage() {
     } catch {
       setProblemState({ status: "not_found" });
     }
-  }, [problemId, trackId]);
+  }, [problemId]);
 
   useEffect(() => {
     setProblemState({ status: "loading" });
@@ -302,7 +301,7 @@ export default function ProblemIDEPage() {
   }, [clearProbeRequest, problemState, reportProbeHit]);
 
   const runCode = useCallback(async () => {
-    if (!problem || !track) return;
+    if (!problem) return;
     setIsRunning(true);
     setOutput("");
     setTestResults(null);
@@ -344,10 +343,10 @@ export default function ProblemIDEPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [code, input, langId, problem, problemId, track, trackId]);
+  }, [code, input, langId, problem, problemId, trackId]);
 
   const submitCode = useCallback(async () => {
-    if (!problem || !track) return;
+    if (!problem) return;
     setIsSubmitting(true);
     setOutput("");
     setTestResults(null);
@@ -396,7 +395,7 @@ export default function ProblemIDEPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [code, langId, problem, problemId, track, trackId]);
+  }, [code, langId, problem, problemId, trackId]);
 
   const startOfflineTask = useCallback(async () => {
     setIsConnectingOffline(true);
@@ -475,14 +474,6 @@ export default function ProblemIDEPage() {
       setOfflineError(err.message || "Failed to start offline task");
     }
   }, [clearProbeRequest, loadProblem, problemId, problemState, trackId]);
-
-  if (!track) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="text-gray-400">Problem not found.</div>
-      </div>
-    );
-  }
 
   if (problemState.status === "loading") {
     return (

@@ -39,15 +39,20 @@ export default function TrackDetailPage() {
   }, []);
 
   useEffect(() => {
+    if (!track) {
+      setProblems([]);
+      return;
+    }
+
     setProblems(null);
-    fetch(`/api/tracks/${trackId}/problems`, { cache: "no-store" })
+    fetch(track.problemsApiPath, { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error("Failed to load problems");
         return r.json();
       })
       .then((d) => setProblems(d.problems || []))
       .catch(() => setProblems([]));
-  }, [trackId]);
+  }, [track]);
 
   const scores = useQuery(
     api.scores.getByUserAndTrack,
@@ -117,7 +122,7 @@ export default function TrackDetailPage() {
             return (
               <Link
                 key={problem.slug}
-                href={`/tracks/${trackId}/problems/${problem.slug}`}
+                href={track.buildProblemPath(problem.slug)}
                 className="flex items-center justify-between p-4 bg-[#111127] border border-gray-800 rounded-xl hover:border-blue-500/50 transition-colors group"
               >
                 <div className="flex items-center gap-4">

@@ -16,4 +16,10 @@ export interface TrackModule {
   /** API endpoints for running / submitting code */
   runEndpoint: string;
   submitEndpoint: string;
+  /** Student-facing list endpoint for the track's problems */
+  problemsApiPath: string;
+  /** Student-facing route builder for a specific problem */
+  buildProblemPath(problemSlug: string): string;
+  /** Student-facing API builder for a specific problem */
+  buildProblemApiPath(problemSlug: string): string;
 }

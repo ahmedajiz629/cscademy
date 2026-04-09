@@ -10,6 +10,10 @@ const algorithmics: TrackModule = {
   order: 1,
   runEndpoint: "/api/csacademy/run",
   submitEndpoint: "/api/csacademy/submit",
+  problemsApiPath: "/api/tracks/algorithmics/problems",
+  buildProblemPath: (problemSlug) => `/tracks/algorithmics/problems/${problemSlug}`,
+  buildProblemApiPath: (problemSlug) =>
+    `/api/tracks/algorithmics/problems/${problemSlug}`,
 };
 
 export default algorithmics;
