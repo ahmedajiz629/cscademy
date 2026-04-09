@@ -29,6 +29,9 @@ type Problem = {
   defaultSubmissionRef?: string;
   judgeFilePath?: string;
   starterSubmission?: string;
+  downloadableFilePath?: string;
+  externalLink?: string;
+  flag?: string;
 };
 
 const EMPTY_FORM = {
@@ -48,6 +51,9 @@ const EMPTY_FORM = {
   defaultSubmissionRef: "challenge",
   judgeFilePath: "",
   starterSubmission: "",
+  downloadableFilePath: "",
+  externalLink: "",
+  flag: "",
   isOffline: false,
 };
 
@@ -75,6 +81,7 @@ export default function AdminTrackDetailPage() {
   const isSoftwareEngineeringTrack = trackId === "software-engineering";
   const isLogicReverseEngineeringTrack =
     trackId === "logic-reverse-engineering";
+  const isCtfTrack = trackId === "ctf";
   const canAddProblem =
     !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
   const isFormValid =
@@ -88,7 +95,8 @@ export default function AdminTrackDetailPage() {
     (!isLogicReverseEngineeringTrack ||
       (!!form.judgeFilePath.trim() &&
         !!form.evaluationImage.trim() &&
-        !!form.evaluationCommand.trim()));
+        !!form.evaluationCommand.trim())) &&
+    (!isCtfTrack || mode === "edit" || !!form.flag.trim());
 
   const isActive = settings !== undefined
     ? (settings?.isActive ?? (track?.isActive ?? true))
@@ -129,6 +137,9 @@ export default function AdminTrackDetailPage() {
       defaultSubmissionRef: p.defaultSubmissionRef ?? "challenge",
       judgeFilePath: p.judgeFilePath ?? "",
       starterSubmission: p.starterSubmission ?? "",
+      downloadableFilePath: p.downloadableFilePath ?? "",
+      externalLink: p.externalLink ?? "",
+      flag: "",
       isOffline: p.isOffline ?? false,
     });
     setEditingId(p._id);
@@ -146,6 +157,7 @@ export default function AdminTrackDetailPage() {
       const contestTaskId =
         !isSoftwareEngineeringTrack &&
         !isLogicReverseEngineeringTrack &&
+        !isCtfTrack &&
         form.contestTaskId
         ? parseInt(form.contestTaskId)
         : undefined;
@@ -171,6 +183,45 @@ export default function AdminTrackDetailPage() {
       const starterSubmission = isLogicReverseEngineeringTrack
         ? form.starterSubmission
         : undefined;
+      const downloadableFilePath = isCtfTrack
+        ? form.downloadableFilePath.trim() || ""
+        : undefined;
+      const externalLink = isCtfTrack
+        ? form.externalLink.trim() || ""
+        : undefined;
+      const flag = isCtfTrack ? form.flag.trim() || undefined : undefined;
+
+      if (isCtfTrack) {
+        const response = await fetch(
+          mode === "add"
+            ? "/api/admin/ctf/problems"
+            : `/api/admin/ctf/problems/${editingId}`,
+          {
+            method: mode === "add" ? "POST" : "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              slug: form.slug.trim().toLowerCase().replace(/\s+/g, "-"),
+              name: form.name.trim(),
+              description: form.description.trim(),
+              points: Number(form.points),
+              order: Number(form.order),
+              downloadableFilePath,
+              externalLink,
+              flag,
+              isOffline: form.isOffline,
+            }),
+          }
+        );
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || "Failed to save CTF problem.");
+        }
+
+        setMode("view");
+        setEditingId(null);
+        return;
+      }
 
       if (mode === "add") {
         await createProblem({
@@ -180,15 +231,15 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
             ? undefined
             : form.sampleInput || undefined,
-          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
             ? undefined
             : form.sampleOutput || undefined,
           contestTaskId,
           referer:
-            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
               ? undefined
               : form.referer || undefined,
           publicRepositoryUrl,
@@ -198,6 +249,8 @@ export default function AdminTrackDetailPage() {
           defaultSubmissionRef,
           judgeFilePath,
           starterSubmission,
+          downloadableFilePath,
+          externalLink,
           isOffline: form.isOffline,
         });
       } else if (mode === "edit" && editingId) {
@@ -207,15 +260,15 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
             ? undefined
             : form.sampleInput || undefined,
-          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
             ? undefined
             : form.sampleOutput || undefined,
           contestTaskId,
           referer:
-            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
               ? undefined
               : form.referer || undefined,
           publicRepositoryUrl,
@@ -225,6 +278,8 @@ export default function AdminTrackDetailPage() {
           defaultSubmissionRef,
           judgeFilePath,
           starterSubmission,
+          downloadableFilePath,
+          externalLink,
           isOffline: form.isOffline,
         });
       }
@@ -301,6 +356,8 @@ export default function AdminTrackDetailPage() {
             ? "Runtime"
             : isLogicReverseEngineeringTrack
               ? "Judge Runtime"
+              : isCtfTrack
+                ? "Challenge Type"
             : `Languages (${languages?.length ?? "…"})`}
         </h2>
         {isSoftwareEngineeringTrack ? (
@@ -311,6 +368,10 @@ export default function AdminTrackDetailPage() {
           <p className="text-sm text-gray-300">
             Students submit a single string expression that is checked by a downloadable judge using the configured Docker image and command.
           </p>
+        ) : isCtfTrack ? (
+          <p className="text-sm text-gray-300">
+            Students read the description, optionally download an attached file or follow a resource link, and submit the exact flag for server-side validation.
+          </p>
         ) : languages ? (
           <p className="text-sm text-gray-300">{languages.map((l) => l.name).join(", ")}</p>
         ) : (
@@ -319,6 +380,8 @@ export default function AdminTrackDetailPage() {
         <p className="text-xs text-gray-600 mt-1">
           {isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? "Docker must be available on the server that runs this app."
+            : isCtfTrack
+              ? "The flag is stored server-side and is not exposed through the student problem API."
             : "Languages are seeded from the evaluation provider and cannot be edited here."}
         </p>
       </div>
@@ -508,6 +571,43 @@ export default function AdminTrackDetailPage() {
                   </p>
                 </div>
               </>
+            ) : isCtfTrack ? (
+              <>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Downloadable File URL / Public Path</label>
+                  <input
+                    value={form.downloadableFilePath}
+                    onChange={(e) =>
+                      setForm({ ...form, downloadableFilePath: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    placeholder="/files/challenge.zip or https://example.com/challenge.zip"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Optional Resource Link</label>
+                  <input
+                    value={form.externalLink}
+                    onChange={(e) => setForm({ ...form, externalLink: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="https://example.com/writeup-or-portal"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Flag</label>
+                  <input
+                    value={form.flag}
+                    onChange={(e) => setForm({ ...form, flag: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    placeholder="flag{example}"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">
+                    File and link are optional. The flag is required for new problems, encrypted on the server, and never returned to the browser. Leave it blank while editing to keep the existing flag.
+                  </p>
+                </div>
+              </>
             ) : (
               <>
                 <div className="col-span-1">
@@ -585,7 +685,11 @@ export default function AdminTrackDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Slug</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Mode</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  {isLogicReverseEngineeringTrack ? "Judge Source" : "Task ID"}
+                  {isLogicReverseEngineeringTrack
+                    ? "Judge Source"
+                    : isCtfTrack
+                      ? "File / Link"
+                      : "Task ID"}
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active</th>
@@ -614,6 +718,8 @@ export default function AdminTrackDetailPage() {
                   <td className="px-4 py-3 text-sm text-gray-400 font-mono break-all">
                     {isLogicReverseEngineeringTrack
                       ? p.judgeFilePath ?? "—"
+                      : isCtfTrack
+                        ? p.downloadableFilePath || p.externalLink || "—"
                       : p.contestTaskId ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-400">{p.points}</td>

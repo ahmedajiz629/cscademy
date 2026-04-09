@@ -63,6 +63,14 @@ export default defineSchema({
     starterSubmission: v.optional(v.string()),
   }).index("by_problemId", ["problemId"]),
 
+  // CTF-only problem settings
+  ctfProblemConfigs: defineTable({
+    problemId: v.id("trackProblems"),
+    downloadableFilePath: v.optional(v.string()),
+    externalLink: v.optional(v.string()),
+    encryptedFlag: v.string(),
+  }).index("by_problemId", ["problemId"]),
+
   // Per-student lifecycle for offline/LAN-gated problems
   offlineProblemSessions: defineTable({
     userId: v.id("users"),

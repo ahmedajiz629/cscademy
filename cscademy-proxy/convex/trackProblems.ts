@@ -49,6 +49,15 @@ async function getLogicReverseEngineeringConfigByProblemId(
   return configs[0] || null;
 }
 
+async function getCtfConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
+  const configs = await ctx.db
+    .query("ctfProblemConfigs")
+    .withIndex("by_problemId", (queryRef: any) => queryRef.eq("problemId", problemId))
+    .collect();
+
+  return configs[0] || null;
+}
+
 async function upsertAlgorithmicsConfig(
   ctx: any,
   problemId: Id<"trackProblems">,
@@ -143,6 +152,41 @@ async function upsertLogicReverseEngineeringConfig(
   });
 }
 
+async function upsertCtfConfig(
+  ctx: any,
+  problemId: Id<"trackProblems">,
+  fields: {
+    downloadableFilePath?: string;
+    externalLink?: string;
+    encryptedFlag?: string;
+  }
+) {
+  const existingConfig = await getCtfConfigByProblemId(ctx, problemId);
+  const normalizedEncryptedFlag = fields.encryptedFlag?.trim();
+  const cleanConfig = cleanFields({
+    downloadableFilePath: fields.downloadableFilePath,
+    externalLink: fields.externalLink,
+    encryptedFlag: normalizedEncryptedFlag,
+  });
+
+  if (existingConfig) {
+    if (Object.keys(cleanConfig).length > 0) {
+      await ctx.db.patch(existingConfig._id, cleanConfig);
+    }
+    return;
+  }
+
+  if (!normalizedEncryptedFlag) {
+    throw new Error("CTF encrypted flag is required.");
+  }
+
+  await ctx.db.insert("ctfProblemConfigs", {
+    problemId,
+    ...cleanConfig,
+    encryptedFlag: normalizedEncryptedFlag,
+  });
+}
+
 async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
   if (problem.trackSlug === "algorithmics") {
     const config = await getAlgorithmicsConfigByProblemId(ctx, problem._id);
@@ -165,10 +209,22 @@ async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
     if (config) {
       await ctx.db.delete(config._id);
     }
+    return;
+  }
+
+  if (problem.trackSlug === "ctf") {
+    const config = await getCtfConfigByProblemId(ctx, problem._id);
+    if (config) {
+      await ctx.db.delete(config._id);
+    }
   }
 }
 
-async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
+async function mergeProblemWithConfig(
+  ctx: any,
+  problem: BaseProblem,
+  { includeSecrets = false }: { includeSecrets?: boolean } = {}
+) {
   const sharedShape = {
     ...problem,
     sampleInput: undefined as string | undefined,
@@ -183,6 +239,8 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
     judgeFilePath: undefined as string | undefined,
     evaluationCommand: undefined as string | undefined,
     starterSubmission: undefined as string | undefined,
+    downloadableFilePath: undefined as string | undefined,
+    externalLink: undefined as string | undefined,
     isOffline: problem.isOffline ?? false,
   };
 
@@ -226,6 +284,16 @@ async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
     };
   }
 
+  if (problem.trackSlug === "ctf") {
+    const config = await getCtfConfigByProblemId(ctx, problem._id);
+
+    return {
+      ...sharedShape,
+      downloadableFilePath: config?.downloadableFilePath,
+      externalLink: config?.externalLink,
+    };
+  }
+
   return sharedShape;
 }
 
@@ -256,7 +324,9 @@ export const listByTrackAdmin = query({
       .collect();
 
     const mergedProblems = await Promise.all(
-      problems.map((problem) => mergeProblemWithConfig(ctx, problem))
+      problems.map((problem) =>
+        mergeProblemWithConfig(ctx, problem, { includeSecrets: true })
+      )
     );
 
     return mergedProblems.sort((left, right) => left.order - right.order);
@@ -278,6 +348,26 @@ export const getBySlug = query({
     if (problem?.isActive === false) return null;
 
     return problem ? mergeProblemWithConfig(ctx, problem) : null;
+  },
+});
+
+export const getCtfValidationData = query({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) => {
+    const results = await ctx.db
+      .query("trackProblems")
+      .withIndex("by_trackSlug_slug", (q) => q.eq("trackSlug", "ctf").eq("slug", slug))
+      .collect();
+
+    const problem = results[0] || null;
+    if (problem?.isActive === false || !problem) return null;
+
+    const config = await getCtfConfigByProblemId(ctx, problem._id);
+
+    return {
+      points: problem.points,
+      encryptedFlag: config?.encryptedFlag,
+    };
   },
 });
 
@@ -312,6 +402,9 @@ export const create = mutation({
     judgeFilePath: v.optional(v.string()),
     evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
+    downloadableFilePath: v.optional(v.string()),
+    externalLink: v.optional(v.string()),
+    encryptedFlag: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -326,6 +419,10 @@ export const create = mutation({
           "The software engineering track supports a single challenge only."
         );
       }
+    }
+
+    if (args.trackSlug === "ctf" && !args.encryptedFlag?.trim()) {
+      throw new Error("CTF encrypted flag is required.");
     }
 
     const problemId = await ctx.db.insert("trackProblems", {
@@ -366,6 +463,14 @@ export const create = mutation({
       });
     }
 
+    if (args.trackSlug === "ctf") {
+      await upsertCtfConfig(ctx, problemId, {
+        downloadableFilePath: args.downloadableFilePath,
+        externalLink: args.externalLink,
+        encryptedFlag: args.encryptedFlag,
+      });
+    }
+
     return problemId;
   },
 });
@@ -389,6 +494,9 @@ export const update = mutation({
     judgeFilePath: v.optional(v.string()),
     evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
+    downloadableFilePath: v.optional(v.string()),
+    externalLink: v.optional(v.string()),
+    encryptedFlag: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
@@ -435,6 +543,14 @@ export const update = mutation({
         evaluationImage: fields.evaluationImage,
         evaluationCommand: fields.evaluationCommand,
         starterSubmission: fields.starterSubmission,
+      });
+    }
+
+    if (problem.trackSlug === "ctf") {
+      await upsertCtfConfig(ctx, id, {
+        downloadableFilePath: fields.downloadableFilePath,
+        externalLink: fields.externalLink,
+        encryptedFlag: fields.encryptedFlag,
       });
     }
   },

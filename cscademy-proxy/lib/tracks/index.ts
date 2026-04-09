@@ -1,5 +1,6 @@
 import type { TrackModule } from "./types";
 import algorithmics from "./algorithmics";
+import ctf from "./ctf";
 import logicReverseEngineering from "./logic-reverse-engineering";
 import softwareEngineering from "./software-engineering";
 
@@ -8,6 +9,7 @@ const ALL_TRACKS: TrackModule[] = [
   algorithmics,
   softwareEngineering,
   logicReverseEngineering,
+  ctf,
 ];
 
 /** Map for O(1) lookup */
