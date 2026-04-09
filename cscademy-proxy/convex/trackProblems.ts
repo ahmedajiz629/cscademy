@@ -1,5 +1,163 @@
-import { query, mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+
+type BaseProblem = Doc<"trackProblems">;
+
+function cleanFields(fields: Record<string, unknown>) {
+  const clean: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) {
+      clean[key] = value;
+    }
+  }
+
+  return clean;
+}
+
+async function getAlgorithmicsConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
+  const configs = await ctx.db
+    .query("algorithmicsProblemConfigs")
+    .withIndex("by_problemId", (queryRef: any) => queryRef.eq("problemId", problemId))
+    .collect();
+
+  return configs[0] || null;
+}
+
+async function getSoftwareEngineeringConfigByProblemId(
+  ctx: any,
+  problemId: Id<"trackProblems">
+) {
+  const configs = await ctx.db
+    .query("softwareEngineeringProblemConfigs")
+    .withIndex("by_problemId", (queryRef: any) => queryRef.eq("problemId", problemId))
+    .collect();
+
+  return configs[0] || null;
+}
+
+async function upsertAlgorithmicsConfig(
+  ctx: any,
+  problemId: Id<"trackProblems">,
+  fields: {
+    sampleInput?: string;
+    sampleOutput?: string;
+    starterCode?: string;
+    contestTaskId?: number;
+    referer?: string;
+  }
+) {
+  const existingConfig = await getAlgorithmicsConfigByProblemId(ctx, problemId);
+  const cleanConfig = cleanFields(fields);
+
+  if (existingConfig) {
+    if (Object.keys(cleanConfig).length > 0) {
+      await ctx.db.patch(existingConfig._id, cleanConfig);
+    }
+    return;
+  }
+
+  if (Object.keys(cleanConfig).length === 0) {
+    return;
+  }
+
+  await ctx.db.insert("algorithmicsProblemConfigs", {
+    problemId,
+    ...cleanConfig,
+  });
+}
+
+async function upsertSoftwareEngineeringConfig(
+  ctx: any,
+  problemId: Id<"trackProblems">,
+  fields: {
+    publicRepositoryUrl?: string;
+    evaluationImage?: string;
+    baseCommit?: string;
+    defaultSubmissionRef?: string;
+  }
+) {
+  const existingConfig = await getSoftwareEngineeringConfigByProblemId(ctx, problemId);
+  const cleanConfig = cleanFields(fields);
+
+  if (existingConfig) {
+    if (Object.keys(cleanConfig).length > 0) {
+      await ctx.db.patch(existingConfig._id, cleanConfig);
+    }
+    return;
+  }
+
+  if (Object.keys(cleanConfig).length === 0) {
+    return;
+  }
+
+  await ctx.db.insert("softwareEngineeringProblemConfigs", {
+    problemId,
+    ...cleanConfig,
+  });
+}
+
+async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
+  if (problem.trackSlug === "algorithmics") {
+    const config = await getAlgorithmicsConfigByProblemId(ctx, problem._id);
+    if (config) {
+      await ctx.db.delete(config._id);
+    }
+    return;
+  }
+
+  if (problem.trackSlug === "software-engineering") {
+    const config = await getSoftwareEngineeringConfigByProblemId(ctx, problem._id);
+    if (config) {
+      await ctx.db.delete(config._id);
+    }
+  }
+}
+
+async function mergeProblemWithConfig(ctx: any, problem: BaseProblem) {
+  const sharedShape = {
+    ...problem,
+    sampleInput: undefined as string | undefined,
+    sampleOutput: undefined as string | undefined,
+    starterCode: undefined as string | undefined,
+    contestTaskId: undefined as number | undefined,
+    referer: undefined as string | undefined,
+    publicRepositoryUrl: undefined as string | undefined,
+    evaluationImage: undefined as string | undefined,
+    baseCommit: undefined as string | undefined,
+    defaultSubmissionRef: undefined as string | undefined,
+    isOffline: problem.isOffline ?? false,
+  };
+
+  if (problem.trackSlug === "algorithmics") {
+    const config = await getAlgorithmicsConfigByProblemId(ctx, problem._id);
+
+    return {
+      ...sharedShape,
+      sampleInput: config?.sampleInput,
+      sampleOutput: config?.sampleOutput,
+      starterCode: config?.starterCode,
+      contestTaskId: config?.contestTaskId,
+      referer: config?.referer,
+    };
+  }
+
+  if (problem.trackSlug === "software-engineering") {
+    const config = await getSoftwareEngineeringConfigByProblemId(ctx, problem._id);
+
+    return {
+      ...sharedShape,
+      publicRepositoryUrl: config?.publicRepositoryUrl,
+      evaluationImage: config?.evaluationImage,
+      baseCommit: config?.baseCommit,
+      defaultSubmissionRef: config?.defaultSubmissionRef,
+      isOffline: false,
+    };
+  }
+
+  return sharedShape;
+}
 
 export const listByTrack = query({
   args: { trackSlug: v.string() },
@@ -8,9 +166,13 @@ export const listByTrack = query({
       .query("trackProblems")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
-    return problems
-      .filter((p) => p.isActive !== false)
-      .sort((a, b) => a.order - b.order);
+
+    const visibleProblems = problems.filter((problem) => problem.isActive !== false);
+    const mergedProblems = await Promise.all(
+      visibleProblems.map((problem) => mergeProblemWithConfig(ctx, problem))
+    );
+
+    return mergedProblems.sort((left, right) => left.order - right.order);
   },
 });
 
@@ -22,7 +184,12 @@ export const listByTrackAdmin = query({
       .query("trackProblems")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
-    return problems.sort((a, b) => a.order - b.order);
+
+    const mergedProblems = await Promise.all(
+      problems.map((problem) => mergeProblemWithConfig(ctx, problem))
+    );
+
+    return mergedProblems.sort((left, right) => left.order - right.order);
   },
 });
 
@@ -35,10 +202,12 @@ export const getBySlug = query({
         q.eq("trackSlug", trackSlug).eq("slug", slug)
       )
       .collect();
+
     const problem = results[0] || null;
     // Return null for disabled problems (students see "not found")
     if (problem?.isActive === false) return null;
-    return problem;
+
+    return problem ? mergeProblemWithConfig(ctx, problem) : null;
   },
 });
 
@@ -86,7 +255,36 @@ export const create = mutation({
       }
     }
 
-    return ctx.db.insert("trackProblems", args);
+    const problemId = await ctx.db.insert("trackProblems", {
+      trackSlug: args.trackSlug,
+      slug: args.slug,
+      name: args.name,
+      description: args.description,
+      points: args.points,
+      order: args.order,
+      isOffline: args.isOffline,
+    });
+
+    if (args.trackSlug === "algorithmics") {
+      await upsertAlgorithmicsConfig(ctx, problemId, {
+        sampleInput: args.sampleInput,
+        sampleOutput: args.sampleOutput,
+        starterCode: args.starterCode,
+        contestTaskId: args.contestTaskId,
+        referer: args.referer,
+      });
+    }
+
+    if (args.trackSlug === "software-engineering") {
+      await upsertSoftwareEngineeringConfig(ctx, problemId, {
+        publicRepositoryUrl: args.publicRepositoryUrl,
+        evaluationImage: args.evaluationImage,
+        baseCommit: args.baseCommit,
+        defaultSubmissionRef: args.defaultSubmissionRef,
+      });
+    }
+
+    return problemId;
   },
 });
 
@@ -109,17 +307,55 @@ export const update = mutation({
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
-    const clean: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(fields)) {
-      if (v !== undefined) clean[k] = v;
+    const problem = await ctx.db.get(id);
+
+    if (!problem) {
+      throw new Error("Problem not found.");
     }
-    await ctx.db.patch(id, clean);
+
+    const sharedFields = cleanFields({
+      name: fields.name,
+      description: fields.description,
+      points: fields.points,
+      order: fields.order,
+      isOffline: fields.isOffline,
+    });
+
+    if (Object.keys(sharedFields).length > 0) {
+      await ctx.db.patch(id, sharedFields);
+    }
+
+    if (problem.trackSlug === "algorithmics") {
+      await upsertAlgorithmicsConfig(ctx, id, {
+        sampleInput: fields.sampleInput,
+        sampleOutput: fields.sampleOutput,
+        starterCode: fields.starterCode,
+        contestTaskId: fields.contestTaskId,
+        referer: fields.referer,
+      });
+    }
+
+    if (problem.trackSlug === "software-engineering") {
+      await upsertSoftwareEngineeringConfig(ctx, id, {
+        publicRepositoryUrl: fields.publicRepositoryUrl,
+        evaluationImage: fields.evaluationImage,
+        baseCommit: fields.baseCommit,
+        defaultSubmissionRef: fields.defaultSubmissionRef,
+      });
+    }
   },
 });
 
 export const remove = mutation({
   args: { id: v.id("trackProblems") },
   handler: async (ctx, { id }) => {
+    const problem = await ctx.db.get(id);
+
+    if (!problem) {
+      return;
+    }
+
+    await deleteTrackSpecificConfig(ctx, problem);
     await ctx.db.delete(id);
   },
 });
@@ -132,6 +368,7 @@ export const clearByTrack = mutation({
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
     for (const p of problems) {
+      await deleteTrackSpecificConfig(ctx, p);
       await ctx.db.delete(p._id);
     }
     return problems.length;

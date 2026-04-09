@@ -29,20 +29,30 @@ export default defineSchema({
     description: v.string(),
     points: v.number(),
     order: v.number(),
-    sampleInput: v.optional(v.string()),
-    sampleOutput: v.optional(v.string()),
-    starterCode: v.optional(v.string()), // JSON Record<langId, code>
-    contestTaskId: v.optional(v.number()),
-    referer: v.optional(v.string()),
-    publicRepositoryUrl: v.optional(v.string()),
-    evaluationImage: v.optional(v.string()),
-    baseCommit: v.optional(v.string()),
-    defaultSubmissionRef: v.optional(v.string()),
     isActive: v.optional(v.boolean()), // undefined/true = active, false = disabled
     isOffline: v.optional(v.boolean()), // undefined/false = regular online task
   })
     .index("by_trackSlug", ["trackSlug"])
     .index("by_trackSlug_slug", ["trackSlug", "slug"]),
+
+  // Algorithmics-only problem settings
+  algorithmicsProblemConfigs: defineTable({
+    problemId: v.id("trackProblems"),
+    sampleInput: v.optional(v.string()),
+    sampleOutput: v.optional(v.string()),
+    starterCode: v.optional(v.string()), // JSON Record<langId, code>
+    contestTaskId: v.optional(v.number()),
+    referer: v.optional(v.string()),
+  }).index("by_problemId", ["problemId"]),
+
+  // Software engineering-only problem settings
+  softwareEngineeringProblemConfigs: defineTable({
+    problemId: v.id("trackProblems"),
+    publicRepositoryUrl: v.optional(v.string()),
+    evaluationImage: v.optional(v.string()),
+    baseCommit: v.optional(v.string()),
+    defaultSubmissionRef: v.optional(v.string()),
+  }).index("by_problemId", ["problemId"]),
 
   // Per-student lifecycle for offline/LAN-gated problems
   offlineProblemSessions: defineTable({

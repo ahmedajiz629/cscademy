@@ -230,9 +230,9 @@ Result rules
 - {"status":"failed","reason":"tests failed"} means evaluation completed but the tests did not pass`,
       points: 100,
       order: 1,
-  publicRepositoryUrl: "https://github.com/ajiz-org/software-engineering-challenge",
+      publicRepositoryUrl: "https://github.com/ajiz-org/software-engineering-challenge",
       evaluationImage: "ajiztech/challenge-1",
-      baseCommit: "fe8afb3",
+      baseCommit: "fe8afb3ab6564b1af14b8c1a80e78bd3668868be",
       defaultSubmissionRef: "main",
     },
   ];
