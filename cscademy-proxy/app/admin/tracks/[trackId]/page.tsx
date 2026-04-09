@@ -374,7 +374,7 @@ export default function AdminTrackDetailPage() {
                 <div className="col-span-1">
                   <label className="block text-xs text-gray-400 mb-1">Base Commit</label>
                   <input
-                    value={form.baseCommit}
+                    value={form.baseCommit.slice(0, 7)}
                     onChange={(e) => setForm({ ...form, baseCommit: e.target.value })}
                     className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                     placeholder="fe8afb"

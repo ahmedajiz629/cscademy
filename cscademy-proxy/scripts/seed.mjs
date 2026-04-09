@@ -204,9 +204,12 @@ arm`,
     },
     {
       trackSlug: "software-engineering",
-      slug: "challenge-1",
-      name: "Challenge 1",
+      slug: "visitor",
+      name: "Visitor Pattern Challenge",
       description: `Clone the public starter repository, implement the required fixes, and make the test suite pass.
+
+Public starter repository
+https://github.com/ajiz-org/software-engineering-challenge
 
 Workflow
 1. Clone the public starter repository locally.
@@ -219,7 +222,7 @@ Evaluation
 The platform runs a Docker challenge runner against your private branch with:
 - REPO_URL=https://github.com/<user>/<repo>
 - SUBMISSION_REF=challenge
-- BASE_COMMIT=fe8afb
+- BASE_COMMIT=fe8afb3
 - ACCESS_TOKEN=github_pat_<...>
 - image: ajiztech/challenge-1
 
@@ -228,11 +231,11 @@ Result rules
 - fatal: could not read Username for 'https://github.com': No such device or address means the token did not work
 - fatal: couldn't find remote ref <branch> means the submitted branch does not exist
 - {"status":"failed","reason":"tests failed"} means evaluation completed but the tests did not pass`,
-      points: 20,
+      points: 100,
       order: 1,
       evaluationImage: "ajiztech/challenge-1",
-      baseCommit: "fe8afb",
-      defaultSubmissionRef: "challenge",
+      baseCommit: "fe8afb3",
+      defaultSubmissionRef: "main",
     },
   ];
 }

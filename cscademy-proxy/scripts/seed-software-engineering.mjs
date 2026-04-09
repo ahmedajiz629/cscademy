@@ -29,9 +29,12 @@ const client = new ConvexHttpClient(CONVEX_URL);
 
 const problem = {
   trackSlug: "software-engineering",
-  slug: "challenge-1",
-  name: "Challenge 1",
+  slug: "visitor",
+  name: "Visitor Pattern Challenge",
   description: `Clone the public starter repository, implement the required fixes, and make the test suite pass.
+
+Public starter repository
+https://github.com/ajiz-org/software-engineering-challenge
 
 Workflow
 1. Clone the public starter repository locally.
@@ -44,7 +47,7 @@ Evaluation
 The platform runs a Docker challenge runner against your private branch with:
 - REPO_URL=https://github.com/<user>/<repo>
 - SUBMISSION_REF=challenge
-- BASE_COMMIT=fe8afb
+- BASE_COMMIT=fe8afb3
 - ACCESS_TOKEN=github_pat_<...>
 - image: ajiztech/challenge-1
 
@@ -56,8 +59,8 @@ Result rules
   points: 100,
   order: 1,
   evaluationImage: "ajiztech/challenge-1",
-  baseCommit: "fe8afb",
-  defaultSubmissionRef: "challenge",
+  baseCommit: "fe8afb3ab6564b1af14b8c1a80e78bd3668868be",
+  defaultSubmissionRef: "main",
   isOffline: false,
 };
 
