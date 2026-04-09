@@ -281,6 +281,7 @@ export async function runSoftwareEngineeringEvaluation(
       dockerBin,
       [
         "run",
+        "-i",
         "--rm",
         "-e",
         `REPO_URL=${config.repoUrl}`,

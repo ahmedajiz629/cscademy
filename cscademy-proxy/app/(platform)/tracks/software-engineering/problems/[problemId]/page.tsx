@@ -35,6 +35,47 @@ const SUBMISSION_STEPS = [
   "Submit the private repository URL, token, and challenge branch here for evaluation.",
 ];
 
+function quoteCommandValue(value: string): string {
+  return `"${value.replace(/(["\\])/g, "\\$1")}"`;
+}
+
+function buildLocalCommand({
+  repoUrl,
+  submissionRef,
+  baseCommit,
+  accessToken,
+  image,
+}: {
+  repoUrl: string;
+  submissionRef: string;
+  baseCommit?: string;
+  accessToken: string;
+  image?: string;
+}): string | null {
+  const normalizedRepoUrl = repoUrl.trim();
+  const normalizedSubmissionRef = submissionRef.trim() || "challenge";
+  const normalizedBaseCommit = baseCommit?.trim() || "";
+  const normalizedToken = accessToken.trim();
+  const normalizedImage = image?.trim() || "";
+
+  if (!normalizedBaseCommit || !normalizedImage) {
+    return null;
+  }
+
+  return [
+    "docker run -i --rm",
+    "-e",
+    quoteCommandValue(`REPO_URL=${normalizedRepoUrl}`),
+    "-e",
+    quoteCommandValue(`SUBMISSION_REF=${normalizedSubmissionRef}`),
+    "-e",
+    quoteCommandValue(`BASE_COMMIT=${normalizedBaseCommit}`),
+    "-e",
+    quoteCommandValue(`ACCESS_TOKEN=${normalizedToken}`),
+    normalizedImage,
+  ].join(" ");
+}
+
 function buildSummaryLines(result: EvaluationResult): string[] {
   const lines = [
     `Status: ${result.status.toUpperCase()}`,
@@ -60,8 +101,11 @@ function buildSummaryLines(result: EvaluationResult): string[] {
   return lines;
 }
 
-function buildOutputText(result: EvaluationResult): string {
+function buildOutputText(
+  result: EvaluationResult
+): string {
   const lines = buildSummaryLines(result);
+
   return [
     ...lines,
     ...(lines.length > 0 ? ["", "--- logs ---", ""] : []),
@@ -196,6 +240,13 @@ export default function SoftwareEngineeringProblemPage() {
 
   const canEvaluate =
     !!repoUrl.trim() && !!accessToken.trim() && !!submissionRef.trim();
+  const localCommand = buildLocalCommand({
+    repoUrl,
+    submissionRef: submissionRef.trim() || problem.defaultSubmissionRef || "challenge",
+    baseCommit: problem.baseCommit,
+    accessToken,
+    image: problem.evaluationImage,
+  });
 
   return (
     <div className="p-8">
@@ -294,11 +345,25 @@ export default function SoftwareEngineeringProblemPage() {
 
               <Field label="Fine-Grained Access Token">
                 <input
-                  type="password"
+                  type="text"
                   value={accessToken}
                   onChange={(e) => setAccessToken(e.target.value)}
                   className="w-full rounded-xl border border-gray-700 bg-[#0c0c1d] px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
                   placeholder="github_pat_..."
+                  autoComplete="off"
+                />
+              </Field>
+
+              <Field label="Local Docker Command">
+                <textarea
+                  readOnly
+                  value={
+                    localCommand ||
+                    "This challenge is not configured yet. Add a Docker image and base commit first."
+                  }
+                  rows={6}
+                  spellCheck={false}
+                  className="w-full resize-none rounded-xl border border-gray-700 bg-[#0c0c1d] px-4 py-3 text-sm font-mono text-white focus:outline-none"
                 />
               </Field>
             </div>
