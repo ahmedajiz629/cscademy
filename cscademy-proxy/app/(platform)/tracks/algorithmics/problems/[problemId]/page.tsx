@@ -57,7 +57,6 @@ interface User {
 }
 
 interface OfflineRuntimeConfig {
-  canStartOfflineTask: boolean;
   probeImageUrl: string | null;
 }
 
@@ -194,7 +193,6 @@ export default function AlgorithmicsProblemIDEPage() {
       .catch(() => {
         if (!cancelled && typeof window !== "undefined") {
           setRuntimeConfig({
-            canStartOfflineTask: canStartOfflineTaskFromUrl(window.location.href),
             probeImageUrl: null,
           });
         }
@@ -285,10 +283,9 @@ export default function AlgorithmicsProblemIDEPage() {
       status: "offline_confirmation",
       problem: toOfflineProblemPreview(problemRecord),
       canStartOfflineTask:
-        runtimeConfig?.canStartOfflineTask ??
-        (typeof window !== "undefined"
+        typeof window !== "undefined"
           ? canStartOfflineTaskFromUrl(window.location.href)
-          : false),
+          : false,
     };
   }, [
     isAuthResolved,
@@ -529,6 +526,8 @@ export default function AlgorithmicsProblemIDEPage() {
       return;
     }
 
+    const gatewayUrl = resolveOfflineGatewayUrlInBrowser(window.location.href);
+
     setIsConnectingOffline(true);
     setOfflineError("");
     offlineStartedRef.current = false;
@@ -542,7 +541,11 @@ export default function AlgorithmicsProblemIDEPage() {
       const res = await fetch("/api/offline/problem-entry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackSlug: trackId, problemSlug: problemId }),
+        body: JSON.stringify({
+          trackSlug: trackId,
+          problemSlug: problemId,
+          gatewayUrl,
+        }),
       });
       const data = await res.json();
 
@@ -550,7 +553,7 @@ export default function AlgorithmicsProblemIDEPage() {
         throw new Error(data.error || "Failed to start offline task");
       }
 
-      const wsUrl = new URL(resolveOfflineGatewayUrlInBrowser(window.location.href));
+      const wsUrl = new URL(gatewayUrl);
       wsUrl.searchParams.set("token", data.token);
       const socket = new WebSocket(wsUrl.toString());
       socketRef.current = socket;

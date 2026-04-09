@@ -5,8 +5,8 @@ import { getConvexClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
-  canStartOfflineTaskFromUrl,
   createOfflineGatewayToken,
+  normalizeOfflineGatewayUrl,
   resolveOfflineGatewayUrl,
 } from "@/lib/offline-gateway";
 import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { trackSlug, problemSlug } = await req.json();
+  const { trackSlug, problemSlug, gatewayUrl: rawGatewayUrl } = await req.json();
   if (!trackSlug || !problemSlug) {
     return NextResponse.json(
       { error: "trackSlug and problemSlug are required" },
@@ -56,15 +56,19 @@ export async function POST(req: NextRequest) {
 
   const sessionId = randomUUID();
   const forwardedProto = req.headers.get("x-forwarded-proto") ?? undefined;
+  let gatewayUrl: string;
 
-  if (!canStartOfflineTaskFromUrl(req.nextUrl, forwardedProto)) {
+  try {
+    gatewayUrl =
+      typeof rawGatewayUrl === "string" && rawGatewayUrl.trim()
+        ? normalizeOfflineGatewayUrl(rawGatewayUrl)
+        : resolveOfflineGatewayUrl(req.nextUrl, forwardedProto);
+  } catch {
     return NextResponse.json(
-      { error: "You need to open this task from the offline room to start it." },
-      { status: 409 }
+      { error: "gatewayUrl must be a valid offline gateway URL." },
+      { status: 400 }
     );
   }
-
-  const gatewayUrl = resolveOfflineGatewayUrl(req.nextUrl, forwardedProto);
 
   await convex.mutation(api.offlineProblemSessions.prepareEntry, {
     userId,
@@ -81,5 +85,5 @@ export async function POST(req: NextRequest) {
     sessionId,
   });
 
-  return NextResponse.json({ sessionId, token });
+  return NextResponse.json({ sessionId, token, gatewayUrl });
 }
