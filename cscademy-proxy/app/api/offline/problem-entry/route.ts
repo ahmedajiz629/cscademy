@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   createOfflineGatewayToken,
-  normalizeOfflineGatewayUrl,
+  resolveOfflineGatewayUrl,
 } from "@/lib/offline-gateway";
 import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
 
@@ -26,10 +26,7 @@ export async function POST(req: NextRequest) {
 
   const userId = auth.userId as Id<"users">;
   const convex = getConvexClient();
-  const [user, access] = await Promise.all([
-    convex.query(api.users.getById, { id: userId }),
-    getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug),
-  ]);
+  const access = await getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug);
 
   if (!access.problem) {
     return NextResponse.json({ error: "Problem not found" }, { status: 404 });
@@ -38,13 +35,6 @@ export async function POST(req: NextRequest) {
   if (access.problem.isOffline !== true) {
     return NextResponse.json(
       { error: "This problem does not require offline entry." },
-      { status: 400 }
-    );
-  }
-
-  if (!user?.offlineGatewayUrl) {
-    return NextResponse.json(
-      { error: "No offline gateway is configured for this participant." },
       { status: 400 }
     );
   }
@@ -64,7 +54,7 @@ export async function POST(req: NextRequest) {
   }
 
   const sessionId = randomUUID();
-  const gatewayUrl = normalizeOfflineGatewayUrl(user.offlineGatewayUrl);
+  const gatewayUrl = resolveOfflineGatewayUrl(req.nextUrl);
 
   await convex.mutation(api.offlineProblemSessions.prepareEntry, {
     userId,

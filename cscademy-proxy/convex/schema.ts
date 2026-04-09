@@ -9,6 +9,7 @@ export default defineSchema({
     passwordHash: v.string(),
     role: v.union(v.literal("admin"), v.literal("student")),
     isActive: v.boolean(),
+    comment: v.optional(v.string()),
     offlineGatewayUrl: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_email", ["email"]),

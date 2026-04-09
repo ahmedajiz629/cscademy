@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { KeyboardEvent, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
-  formatOfflineAdminReason,
+  OFFLINE_ANTI_CHEAT_REASON,
   isOfflineIncidentFlag,
 } from "@/lib/offline-anti-cheat";
 
@@ -14,7 +14,6 @@ interface UserForm {
   email: string;
   password: string;
   role: "admin" | "student";
-  offlineGatewayUrl: string;
   csaEmail: string;
   csaPassword: string;
 }
@@ -24,10 +23,61 @@ const emptyForm: UserForm = {
   email: "",
   password: "",
   role: "student",
-  offlineGatewayUrl: "",
   csaEmail: "",
   csaPassword: "",
 };
+
+type OfflineSessionStatus = "pending" | "active" | "terminated";
+
+const offlineSessionStatusOptions: Array<{
+  value: OfflineSessionStatus;
+  label: string;
+}> = [
+  { value: "pending", label: "Pending" },
+  { value: "active", label: "Active" },
+  { value: "terminated", label: "Closed" },
+];
+
+const offlineIncidentOptions = [
+  { value: "", label: "No incident" },
+  { value: "connection_lost", label: "Connection lost" },
+  { value: OFFLINE_ANTI_CHEAT_REASON, label: "Anti-cheat detected" },
+];
+
+function getStatusSelectClass(status: OfflineSessionStatus) {
+  switch (status) {
+    case "active":
+      return "border-green-500/30 bg-green-500/10 text-green-300";
+    case "terminated":
+      return "border-red-500/30 bg-red-500/10 text-red-300";
+    default:
+      return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+  }
+}
+
+function getIncidentSelectClass(reason: string) {
+  if (!reason) {
+    return "border-gray-700 bg-[#1a1a2e] text-gray-300";
+  }
+
+  if (isOfflineIncidentFlag(reason)) {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+  }
+
+  if (reason === "connection_lost") {
+    return "border-red-500/30 bg-red-500/10 text-red-300";
+  }
+
+  return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+}
+
+function getSessionIncidentValue(session: {
+  flagReason?: string;
+  terminatedReason?: string;
+}) {
+  const reason = session.flagReason ?? session.terminatedReason ?? "";
+  return isOfflineIncidentFlag(reason) ? OFFLINE_ANTI_CHEAT_REASON : reason;
+}
 
 export default function AdminUsersPage() {
   const users = useQuery(api.users.list);
@@ -37,14 +87,20 @@ export default function AdminUsersPage() {
   const removeUser = useMutation(api.users.remove);
   const upsertCsa = useMutation(api.csacademyAccounts.upsert);
   const removeCsa = useMutation(api.csacademyAccounts.remove);
-  const reopenOfflineSession = useMutation(api.offlineProblemSessions.reopen);
+  const setOfflineSessionStatus = useMutation(api.offlineProblemSessions.setStatus);
+  const setOfflineSessionIncident = useMutation(api.offlineProblemSessions.setIncident);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<Id<"users"> | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [reopeningId, setReopeningId] = useState<Id<"offlineProblemSessions"> | null>(null);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentSavingId, setCommentSavingId] = useState<Id<"users"> | null>(null);
+  const [sessionStatusSavingId, setSessionStatusSavingId] =
+    useState<Id<"offlineProblemSessions"> | null>(null);
+  const [sessionIncidentSavingId, setSessionIncidentSavingId] =
+    useState<Id<"offlineProblemSessions"> | null>(null);
 
   function openCreate() {
     setForm(emptyForm);
@@ -59,7 +115,6 @@ export default function AdminUsersPage() {
       email: user.email,
       password: "",
       role: user.role,
-      offlineGatewayUrl: user.offlineGatewayUrl ?? "",
       csaEmail: "",
       csaPassword: "",
     });
@@ -89,7 +144,6 @@ export default function AdminUsersPage() {
       let userId: Id<"users">;
       const trimmedName = form.name.trim();
       const trimmedEmail = form.email.trim();
-      const trimmedGateway = form.offlineGatewayUrl.trim();
 
       if (editingId) {
         userId = editingId;
@@ -98,7 +152,6 @@ export default function AdminUsersPage() {
           name: trimmedName,
           email: trimmedEmail,
           role: form.role,
-          offlineGatewayUrl: trimmedGateway,
         };
         if (form.password) {
           // Hash password on server
@@ -130,7 +183,6 @@ export default function AdminUsersPage() {
           email: trimmedEmail,
           passwordHash: hashData.hash,
           role: form.role,
-          offlineGatewayUrl: trimmedGateway || undefined,
         });
       }
 
@@ -164,14 +216,65 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleReopenSession(id: Id<"offlineProblemSessions">) {
-    setReopeningId(id);
+  async function handleCommentSave(
+    id: Id<"users">,
+    currentComment?: string
+  ) {
+    const draftValue = commentDrafts[id] ?? currentComment ?? "";
+    const nextComment = draftValue.trim();
+    const normalizedCurrentComment = (currentComment ?? "").trim();
+
+    if (nextComment === normalizedCurrentComment) {
+      return;
+    }
+
+    setCommentSavingId(id);
     try {
-      await reopenOfflineSession({ id });
+      await updateUser({ id, comment: nextComment });
+      setCommentDrafts((prev) => {
+        const nextDrafts = { ...prev };
+        delete nextDrafts[id];
+        return nextDrafts;
+      });
     } catch (err: any) {
-      alert(err.message || "Failed to reopen offline task");
+      alert(err.message || "Failed to save comment");
     } finally {
-      setReopeningId(null);
+      setCommentSavingId(null);
+    }
+  }
+
+  function handleCommentKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.blur();
+    }
+  }
+
+  async function handleSessionStatusChange(
+    id: Id<"offlineProblemSessions">,
+    status: OfflineSessionStatus
+  ) {
+    setSessionStatusSavingId(id);
+    try {
+      await setOfflineSessionStatus({ id, status });
+    } catch (err: any) {
+      alert(err.message || "Failed to update session status");
+    } finally {
+      setSessionStatusSavingId(null);
+    }
+  }
+
+  async function handleSessionIncidentChange(
+    id: Id<"offlineProblemSessions">,
+    incidentReason: string
+  ) {
+    setSessionIncidentSavingId(id);
+    try {
+      await setOfflineSessionIncident({ id, incidentReason });
+    } catch (err: any) {
+      alert(err.message || "Failed to update incident");
+    } finally {
+      setSessionIncidentSavingId(null);
     }
   }
 
@@ -248,22 +351,6 @@ export default function AdminUsersPage() {
                   <option value="admin">Admin</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">
-                  Offline Gateway URL
-                </label>
-                <input
-                  value={form.offlineGatewayUrl}
-                  onChange={(e) =>
-                    setForm({ ...form, offlineGatewayUrl: e.target.value })
-                  }
-                  placeholder="ws://192.168.1.10:8787"
-                  className="w-full px-3 py-2 bg-[#1a1a2e] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used for offline tasks. Leave empty to hide offline tasks for this participant.
-                </p>
-              </div>
 
               <div className="pt-3 border-t border-gray-800">
                 <p className="text-xs text-gray-500 mb-2">
@@ -329,7 +416,7 @@ export default function AdminUsersPage() {
                   Email
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                  Offline Gateway
+                  Comment
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
                   Role
@@ -352,14 +439,25 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3 text-sm text-gray-400">
                     {user.email}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">
-                    {user.offlineGatewayUrl ? (
-                      <span className="font-mono text-xs text-gray-300">
-                        {user.offlineGatewayUrl}
-                      </span>
-                    ) : (
-                      <span className="text-gray-600">Not configured</span>
-                    )}
+                  <td className="px-4 py-3 text-sm text-gray-400 min-w-[18rem]">
+                    <div className="space-y-1">
+                      <input
+                        value={commentDrafts[user._id] ?? user.comment ?? ""}
+                        onChange={(e) =>
+                          setCommentDrafts((prev) => ({
+                            ...prev,
+                            [user._id]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => void handleCommentSave(user._id, user.comment)}
+                        onKeyDown={handleCommentKeyDown}
+                        placeholder="Add comment"
+                        className="w-full px-3 py-2 bg-[#1a1a2e] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      {commentSavingId === user._id && (
+                        <p className="text-xs text-gray-500">Saving comment...</p>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -407,7 +505,7 @@ export default function AdminUsersPage() {
           <div>
             <h2 className="text-lg font-semibold text-white">Offline Task Sessions</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Admin-visible incident badges and manual reopen controls for closed tasks.
+              Edit status and incident labels inline for each offline task session.
             </p>
           </div>
         </div>
@@ -438,21 +536,11 @@ export default function AdminUsersPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
                     Updated
                   </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody>
                 {offlineSessions.map((session) => {
-                  const isClosed = session.status === "terminated";
-                  const incidentReasons = Array.from(
-                    new Set(
-                      [session.flagReason, session.terminatedReason].filter(
-                        (reason): reason is string => Boolean(reason)
-                      )
-                    )
-                  );
+                  const incidentValue = getSessionIncidentValue(session);
                   return (
                     <tr
                       key={session._id}
@@ -467,57 +555,60 @@ export default function AdminUsersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-400">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded ${
-                            isClosed
-                              ? "bg-red-500/20 text-red-300"
-                              : session.status === "active"
-                                ? "bg-green-500/20 text-green-300"
-                                : "bg-amber-500/20 text-amber-300"
-                          }`}
+                        <select
+                          value={session.status}
+                          onChange={(e) =>
+                            void handleSessionStatusChange(
+                              session._id,
+                              e.target.value as OfflineSessionStatus
+                            )
+                          }
+                          disabled={sessionStatusSavingId === session._id}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 ${getStatusSelectClass(
+                            session.status
+                          )}`}
                         >
-                          {isClosed
-                            ? "Closed"
-                            : session.status === "active"
-                              ? "Active"
-                              : "Pending"}
-                        </span>
+                          {offlineSessionStatusOptions.map((option) => (
+                            <option
+                              key={option.value}
+                              value={option.value}
+                              className="bg-[#111127] text-white"
+                            >
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-400">
-                        <div className="flex flex-wrap gap-2">
-                          {incidentReasons.map((reason) => (
-                            <span
-                              key={`${session._id}-${reason}`}
-                              className={`text-xs px-2 py-0.5 rounded ${
-                                isOfflineIncidentFlag(reason)
-                                  ? "bg-amber-500/20 text-amber-300"
-                                  : reason === "connection_lost"
-                                    ? "bg-red-500/20 text-red-300"
-                                    : "bg-sky-500/20 text-sky-300"
-                              }`}
+                        <select
+                          value={incidentValue}
+                          onChange={(e) =>
+                            void handleSessionIncidentChange(
+                              session._id,
+                              e.target.value
+                            )
+                          }
+                          disabled={sessionIncidentSavingId === session._id}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 ${getIncidentSelectClass(
+                            incidentValue
+                          )}`}
+                        >
+                          {offlineIncidentOptions.map((option) => (
+                            <option
+                              key={option.value || "none"}
+                              value={option.value}
+                              className="bg-[#111127] text-white"
                             >
-                              {formatOfflineAdminReason(reason)}
-                            </span>
+                              {option.label}
+                            </option>
                           ))}
-                          {incidentReasons.length === 0 && (
-                            <span className="text-gray-600">—</span>
-                          )}
-                        </div>
+                        </select>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
-                        {new Date(session.updatedAt).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {isClosed ? (
-                          <button
-                            onClick={() => handleReopenSession(session._id)}
-                            disabled={reopeningId === session._id}
-                            className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white rounded-lg transition-colors"
-                          >
-                            {reopeningId === session._id ? "Reopening..." : "Reopen access"}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-600">—</span>
+                        <div>{new Date(session.updatedAt).toLocaleString()}</div>
+                        {(sessionStatusSavingId === session._id ||
+                          sessionIncidentSavingId === session._id) && (
+                          <div className="text-xs text-gray-600 mt-1">Saving…</div>
                         )}
                       </td>
                     </tr>

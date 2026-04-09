@@ -1,7 +1,64 @@
 import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 const DEFAULT_FLAG_REASON = "probe_match";
+const DEFAULT_TERMINATED_REASON = "connection_lost";
+
+type OfflineProblemSessionDocument = Doc<"offlineProblemSessions">;
+type OfflineProblemSessionRecord = Omit<
+  OfflineProblemSessionDocument,
+  "_id" | "_creationTime"
+>;
+
+function buildSessionDocument(
+  session: OfflineProblemSessionDocument,
+  overrides: Partial<OfflineProblemSessionRecord> = {}
+): OfflineProblemSessionRecord {
+  const nextSession: OfflineProblemSessionRecord = {
+    userId: session.userId,
+    trackSlug: session.trackSlug,
+    problemSlug: session.problemSlug,
+    sessionId: session.sessionId,
+    gatewayUrl: session.gatewayUrl,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
+
+  if (session.startedAt !== undefined) {
+    nextSession.startedAt = session.startedAt;
+  }
+  if (session.lastHeartbeatAt !== undefined) {
+    nextSession.lastHeartbeatAt = session.lastHeartbeatAt;
+  }
+  if (session.terminatedAt !== undefined) {
+    nextSession.terminatedAt = session.terminatedAt;
+  }
+  if (session.terminatedReason !== undefined) {
+    nextSession.terminatedReason = session.terminatedReason;
+  }
+  if (session.flaggedAt !== undefined) {
+    nextSession.flaggedAt = session.flaggedAt;
+  }
+  if (session.flagReason !== undefined) {
+    nextSession.flagReason = session.flagReason;
+  }
+  if (session.flagCount !== undefined) {
+    nextSession.flagCount = session.flagCount;
+  }
+
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete (nextSession as Record<string, any>)[key];
+      continue;
+    }
+
+    (nextSession as Record<string, any>)[key] = value;
+  }
+
+  return nextSession;
+}
 
 export const getByUserAndProblem = query({
   args: {
@@ -211,21 +268,85 @@ export const reopen = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.replace(id, {
-      userId: session.userId,
-      trackSlug: session.trackSlug,
-      problemSlug: session.problemSlug,
-      sessionId: session.sessionId,
-      gatewayUrl: session.gatewayUrl,
-      status: "pending",
-      createdAt: session.createdAt,
+    await ctx.db.replace(
+      id,
+      buildSessionDocument(session, {
+        status: "pending",
+        updatedAt: now,
+      })
+    );
+
+    return id;
+  },
+});
+
+export const setStatus = mutation({
+  args: {
+    id: v.id("offlineProblemSessions"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("terminated")
+    ),
+  },
+  handler: async (ctx, { id, status }) => {
+    const session = await ctx.db.get(id);
+
+    if (!session) {
+      throw new Error("Offline session not found.");
+    }
+
+    const now = Date.now();
+    const overrides: Record<string, any> = {
+      status,
       updatedAt: now,
-      terminatedAt: session.terminatedAt,
-      terminatedReason: session.terminatedReason,
-      flaggedAt: session.flaggedAt,
-      flagReason: session.flagReason,
-      flagCount: session.flagCount,
-    });
+    };
+
+    if (status === "active") {
+      overrides.startedAt = session.startedAt ?? now;
+      overrides.lastHeartbeatAt = now;
+    }
+
+    if (status === "terminated") {
+      overrides.terminatedAt = session.terminatedAt ?? now;
+      overrides.terminatedReason =
+        session.terminatedReason ??
+        session.flagReason ??
+        DEFAULT_TERMINATED_REASON;
+      overrides.lastHeartbeatAt = now;
+    }
+
+    await ctx.db.replace(id, buildSessionDocument(session, overrides));
+
+    return id;
+  },
+});
+
+export const setIncident = mutation({
+  args: {
+    id: v.id("offlineProblemSessions"),
+    incidentReason: v.string(),
+  },
+  handler: async (ctx, { id, incidentReason }) => {
+    const session = await ctx.db.get(id);
+
+    if (!session) {
+      throw new Error("Offline session not found.");
+    }
+
+    const now = Date.now();
+    const nextReason = incidentReason.trim() || undefined;
+
+    await ctx.db.replace(
+      id,
+      buildSessionDocument(session, {
+        updatedAt: now,
+        flaggedAt: nextReason ? session.flaggedAt ?? now : session.flaggedAt,
+        flagReason: nextReason,
+        terminatedReason: nextReason,
+        flagCount: nextReason ? session.flagCount ?? 1 : session.flagCount,
+      })
+    );
 
     return id;
   },

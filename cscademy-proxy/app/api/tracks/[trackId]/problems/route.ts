@@ -30,8 +30,7 @@ export async function GET(
   const userId = auth.userId as Id<"users">;
   const convex = getConvexClient();
 
-  const [user, problems, sessions] = await Promise.all([
-    convex.query(api.users.getById, { id: userId }),
+  const [problems, sessions] = await Promise.all([
     convex.query(api.trackProblems.listByTrack, { trackSlug: trackId }),
     convex.query(api.offlineProblemSessions.listByUserAndTrack, {
       userId,
@@ -52,10 +51,6 @@ export async function GET(
         isOffline: false,
         offlineStatus: null,
       });
-      continue;
-    }
-
-    if (!user?.offlineGatewayUrl) {
       continue;
     }
 
