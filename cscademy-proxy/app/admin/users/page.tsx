@@ -122,8 +122,8 @@ export default function AdminUsersPage() {
     setShowForm(true);
     setError("");
 
-    // Load CSA account
-    fetch(`/api/admin/csa-account?userId=${user._id}`)
+    // Load evaluation account
+    fetch(`/api/admin/evaluation-account?userId=${user._id}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.csaEmail) {

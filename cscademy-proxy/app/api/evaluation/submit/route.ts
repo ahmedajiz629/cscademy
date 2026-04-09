@@ -84,7 +84,6 @@ export async function POST(req: NextRequest) {
       programmingLanguageId
     );
 
-    // Record score if available
     if (result?.score !== undefined) {
       try {
         await convex.mutation(api.scores.upsert, {

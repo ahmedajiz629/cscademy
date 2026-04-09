@@ -13,7 +13,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Look up the user's linked evaluation account.
     const convex = getConvexClient();
     const csaAccount = await convex.query(api.csacademyAccounts.getByUserId, {
       userId: auth.userId as Id<"users">,

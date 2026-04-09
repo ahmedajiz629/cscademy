@@ -8,8 +8,8 @@ const algorithmics: TrackModule = {
   icon: "⚡",
   isActive: true,
   order: 1,
-  runEndpoint: "/api/csacademy/run",
-  submitEndpoint: "/api/csacademy/submit",
+  runEndpoint: "/api/evaluation/run",
+  submitEndpoint: "/api/evaluation/submit",
   problemsApiPath: "/api/tracks/algorithmics/problems",
   buildProblemPath: (problemSlug) => `/tracks/algorithmics/problems/${problemSlug}`,
   buildProblemApiPath: (problemSlug) =>
