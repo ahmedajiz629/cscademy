@@ -5,6 +5,7 @@ Ajiz Tech Challenge is a track-based programming challenge platform built with N
 ## Core Capabilities
 
 - Track-based challenge delivery with per-problem scoring.
+- Repository-based software engineering challenges evaluated through Docker runners.
 - Admin tools for users, tracks, languages, and problem configuration.
 - Offline tasks gated by a local WebSocket gateway.
 - Incident tracking and silent anti-cheat reporting for offline sessions.
@@ -41,6 +42,8 @@ The project expects these environment variables:
 - `OFFLINE_GATEWAY_URL` or `OFFLINE_GATEWAY_PORT`
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 
+Docker must also be installed on the server for software engineering track evaluations.
+
 External evaluation account credentials are linked per user from the admin interface.
 
 ## Architecture Notes
@@ -49,6 +52,7 @@ External evaluation account credentials are linked per user from the admin inter
 - Convex stores users, track settings, problems, languages, scores, and offline session state.
 - The offline gateway maintains live LAN presence for offline tasks.
 - The algorithmics track currently uses the external judge integration for run and submit actions.
+- The software engineering track evaluates repository branches by running configured Docker images against student submissions.
 
 ## Seeding and Tooling
 
@@ -59,4 +63,4 @@ pnpm exec convex codegen
 node ./scripts/seed.mjs
 ```
 
-The seed script creates sample users, languages, and algorithmics problems for local development.
+The seed script creates sample users, algorithmics problems, and the software engineering challenge for local development.

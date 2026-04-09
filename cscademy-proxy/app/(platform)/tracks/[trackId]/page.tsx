@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { formatScore } from "@/lib/score-format";
 import { getTrack } from "@/lib/tracks";
 import { isOfflineSessionStale } from "@/lib/offline-session";
 
@@ -140,7 +141,7 @@ export default function TrackDetailPage() {
         </div>
         <div className="text-right">
           <p className="text-2xl font-bold text-white">
-            {totalEarned.toFixed(0)}
+            {formatScore(totalEarned)}
             <span className="text-gray-500 text-lg">/{totalPossible}</span>
           </p>
           <p className="text-xs text-gray-500">points</p>
@@ -210,7 +211,7 @@ export default function TrackDetailPage() {
                               : "text-gray-500"
                         }`}
                       >
-                        {sc.score.toFixed(0)}/{problem.points}
+                        {formatScore(sc.score)}/{problem.points}
                       </span>
                       <span className="text-xs text-gray-600">
                         {sc.attempts} attempt{sc.attempts !== 1 ? "s" : ""}

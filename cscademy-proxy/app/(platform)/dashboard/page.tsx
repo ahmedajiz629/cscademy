@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { formatScore } from "@/lib/score-format";
 import { getAllTracks } from "@/lib/tracks";
 
 interface User {
@@ -86,7 +87,7 @@ export default function DashboardPage() {
                   </span>
                   {earned > 0 && (
                     <span className="text-xs text-green-400">
-                      {earned.toFixed(0)} pts
+                      {formatScore(earned)} pts
                     </span>
                   )}
                 </div>

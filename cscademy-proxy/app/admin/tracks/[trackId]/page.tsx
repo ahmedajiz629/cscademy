@@ -22,6 +22,9 @@ type Problem = {
   starterCode?: string;
   isActive?: boolean;
   isOffline?: boolean;
+  evaluationImage?: string;
+  baseCommit?: string;
+  defaultSubmissionRef?: string;
 };
 
 const EMPTY_FORM = {
@@ -34,6 +37,9 @@ const EMPTY_FORM = {
   sampleOutput: "",
   contestTaskId: "",
   referer: "",
+  evaluationImage: "",
+  baseCommit: "",
+  defaultSubmissionRef: "challenge",
   isOffline: false,
 };
 
@@ -58,6 +64,16 @@ export default function AdminTrackDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Id<"trackProblems"> | null>(null);
 
+  const isSoftwareEngineeringTrack = trackId === "software-engineering";
+  const canAddProblem =
+    !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
+  const isFormValid =
+    !!form.name.trim() &&
+    !!form.description.trim() &&
+    (mode !== "add" || !!form.slug.trim()) &&
+    (!isSoftwareEngineeringTrack ||
+      (!!form.evaluationImage.trim() && !!form.baseCommit.trim()));
+
   const isActive = settings !== undefined
     ? (settings?.isActive ?? (track?.isActive ?? true))
     : (track?.isActive ?? true);
@@ -68,7 +84,12 @@ export default function AdminTrackDetailPage() {
 
   function startAdd() {
     const nextOrder = (problems?.length ?? 0) + 1;
-    setForm({ ...EMPTY_FORM, order: nextOrder });
+    setForm({
+      ...EMPTY_FORM,
+      order: nextOrder,
+      points: isSoftwareEngineeringTrack ? 20 : EMPTY_FORM.points,
+      defaultSubmissionRef: isSoftwareEngineeringTrack ? "challenge" : "",
+    });
     setEditingId(null);
     setMode("add");
   }
@@ -84,6 +105,9 @@ export default function AdminTrackDetailPage() {
       sampleOutput: p.sampleOutput ?? "",
       contestTaskId: p.contestTaskId !== undefined ? String(p.contestTaskId) : "",
       referer: p.referer ?? "",
+      evaluationImage: p.evaluationImage ?? "",
+      baseCommit: p.baseCommit ?? "",
+      defaultSubmissionRef: p.defaultSubmissionRef ?? "challenge",
       isOffline: p.isOffline ?? false,
     });
     setEditingId(p._id);
@@ -98,8 +122,17 @@ export default function AdminTrackDetailPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const contestTaskId = form.contestTaskId
+      const contestTaskId = !isSoftwareEngineeringTrack && form.contestTaskId
         ? parseInt(form.contestTaskId)
+        : undefined;
+      const evaluationImage = isSoftwareEngineeringTrack
+        ? form.evaluationImage.trim() || undefined
+        : undefined;
+      const baseCommit = isSoftwareEngineeringTrack
+        ? form.baseCommit.trim() || undefined
+        : undefined;
+      const defaultSubmissionRef = isSoftwareEngineeringTrack
+        ? form.defaultSubmissionRef.trim() || undefined
         : undefined;
 
       if (mode === "add") {
@@ -110,11 +143,18 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: form.sampleInput || undefined,
-          sampleOutput: form.sampleOutput || undefined,
+          sampleInput: isSoftwareEngineeringTrack
+            ? undefined
+            : form.sampleInput || undefined,
+          sampleOutput: isSoftwareEngineeringTrack
+            ? undefined
+            : form.sampleOutput || undefined,
           contestTaskId,
-          referer: form.referer || undefined,
-          isOffline: form.isOffline,
+          referer: isSoftwareEngineeringTrack ? undefined : form.referer || undefined,
+          evaluationImage,
+          baseCommit,
+          defaultSubmissionRef,
+          isOffline: isSoftwareEngineeringTrack ? false : form.isOffline,
         });
       } else if (mode === "edit" && editingId) {
         await updateProblem({
@@ -123,11 +163,18 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: form.sampleInput || undefined,
-          sampleOutput: form.sampleOutput || undefined,
+          sampleInput: isSoftwareEngineeringTrack
+            ? undefined
+            : form.sampleInput || undefined,
+          sampleOutput: isSoftwareEngineeringTrack
+            ? undefined
+            : form.sampleOutput || undefined,
           contestTaskId,
-          referer: form.referer || undefined,
-          isOffline: form.isOffline,
+          referer: isSoftwareEngineeringTrack ? undefined : form.referer || undefined,
+          evaluationImage,
+          baseCommit,
+          defaultSubmissionRef,
+          isOffline: isSoftwareEngineeringTrack ? false : form.isOffline,
         });
       }
       setMode("view");
@@ -162,8 +209,16 @@ export default function AdminTrackDetailPage() {
           </h1>
           <p className="text-sm text-gray-400 mt-1">{track.description}</p>
           <p className="text-xs text-gray-500 mt-2">
-            Run: <code className="text-gray-400">{track.runEndpoint}</code>
-            {" · "}Submit: <code className="text-gray-400">{track.submitEndpoint}</code>
+            {track.runEndpoint === track.submitEndpoint ? (
+              <>
+                Evaluate: <code className="text-gray-400">{track.submitEndpoint}</code>
+              </>
+            ) : (
+              <>
+                Run: <code className="text-gray-400">{track.runEndpoint}</code>
+                {" · "}Submit: <code className="text-gray-400">{track.submitEndpoint}</code>
+              </>
+            )}
           </p>
         </div>
 
@@ -190,15 +245,25 @@ export default function AdminTrackDetailPage() {
 
       {/* Languages info */}
       <div className="mb-6 p-4 bg-[#111127] border border-gray-800 rounded-xl">
-        <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2">Languages ({languages?.length ?? "…"})</h2>
-        {languages ? (
+        <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2">
+          {isSoftwareEngineeringTrack
+            ? "Runtime"
+            : `Languages (${languages?.length ?? "…"})`}
+        </h2>
+        {isSoftwareEngineeringTrack ? (
           <p className="text-sm text-gray-300">
-            {languages.map((l) => l.name).join(", ")}
+            Repository submissions are evaluated inside Docker and do not use in-browser editor languages.
           </p>
+        ) : languages ? (
+          <p className="text-sm text-gray-300">{languages.map((l) => l.name).join(", ")}</p>
         ) : (
           <p className="text-sm text-gray-500">Loading…</p>
         )}
-        <p className="text-xs text-gray-600 mt-1">Languages are seeded from the evaluation provider and cannot be edited here.</p>
+        <p className="text-xs text-gray-600 mt-1">
+          {isSoftwareEngineeringTrack
+            ? "Docker must be available on the server that runs this app."
+            : "Languages are seeded from the evaluation provider and cannot be edited here."}
+        </p>
       </div>
 
       {/* Problems section */}
@@ -206,7 +271,7 @@ export default function AdminTrackDetailPage() {
         <h2 className="text-lg font-semibold text-white">
           Problems ({problems?.length ?? "…"})
         </h2>
-        {mode === "view" && (
+        {mode === "view" && canAddProblem && (
           <button
             onClick={startAdd}
             className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -215,6 +280,11 @@ export default function AdminTrackDetailPage() {
           </button>
         )}
       </div>
+      {mode === "view" && isSoftwareEngineeringTrack && !canAddProblem && (
+        <p className="text-xs text-gray-500 mb-4">
+          This track supports a single challenge, which is already configured below.
+        </p>
+      )}
 
       {/* Add / Edit form */}
       {(mode === "add" || mode === "edit") && (
@@ -261,23 +331,25 @@ export default function AdminTrackDetailPage() {
                 className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
-                  form.isOffline
-                    ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-                    : "bg-gray-800 border-gray-700 text-gray-200"
-                }`}
-              >
-                <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
-                <span className="text-xs uppercase tracking-wide">
-                  {form.isOffline ? "Offline" : "Online"}
-                </span>
-              </button>
-            </div>
+            {!isSoftwareEngineeringTrack && (
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
+                    form.isOffline
+                      ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+                      : "bg-gray-800 border-gray-700 text-gray-200"
+                  }`}
+                >
+                  <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
+                  <span className="text-xs uppercase tracking-wide">
+                    {form.isOffline ? "Offline" : "Online"}
+                  </span>
+                </button>
+              </div>
+            )}
             <div className="col-span-2">
               <label className="block text-xs text-gray-400 mb-1">Description</label>
               <textarea
@@ -288,48 +360,89 @@ export default function AdminTrackDetailPage() {
                 placeholder="Problem statement…"
               />
             </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Sample Input</label>
-              <textarea
-                rows={3}
-                value={form.sampleInput}
-                onChange={(e) => setForm({ ...form, sampleInput: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Sample Output</label>
-              <textarea
-                rows={3}
-                value={form.sampleOutput}
-                onChange={(e) => setForm({ ...form, sampleOutput: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Judge Task ID</label>
-              <input
-                type="number"
-                value={form.contestTaskId}
-                onChange={(e) => setForm({ ...form, contestTaskId: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="e.g. 51724"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Source URL</label>
-              <input
-                value={form.referer}
-                onChange={(e) => setForm({ ...form, referer: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="https://problem-source.example/..."
-              />
-            </div>
+            {isSoftwareEngineeringTrack ? (
+              <>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Docker Image</label>
+                  <input
+                    value={form.evaluationImage}
+                    onChange={(e) => setForm({ ...form, evaluationImage: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="ajiztech/challenge-1"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Base Commit</label>
+                  <input
+                    value={form.baseCommit}
+                    onChange={(e) => setForm({ ...form, baseCommit: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                    placeholder="fe8afb"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Default Branch</label>
+                  <input
+                    value={form.defaultSubmissionRef}
+                    onChange={(e) =>
+                      setForm({ ...form, defaultSubmissionRef: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="challenge"
+                  />
+                </div>
+                <div className="col-span-1 flex items-end">
+                  <p className="text-xs text-gray-500">
+                    Students provide the repository URL, branch, and GitHub token at submission time.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Sample Input</label>
+                  <textarea
+                    rows={3}
+                    value={form.sampleInput}
+                    onChange={(e) => setForm({ ...form, sampleInput: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Sample Output</label>
+                  <textarea
+                    rows={3}
+                    value={form.sampleOutput}
+                    onChange={(e) => setForm({ ...form, sampleOutput: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Judge Task ID</label>
+                  <input
+                    type="number"
+                    value={form.contestTaskId}
+                    onChange={(e) => setForm({ ...form, contestTaskId: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="e.g. 51724"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Source URL</label>
+                  <input
+                    value={form.referer}
+                    onChange={(e) => setForm({ ...form, referer: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="https://problem-source.example/..."
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div className="flex gap-2 mt-4">
             <button
               onClick={handleSave}
-              disabled={saving || !form.name.trim() || !form.description.trim() || (mode === "add" && !form.slug.trim())}
+              disabled={saving || !isFormValid}
               className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
             >
               {saving ? "Saving…" : mode === "add" ? "Create Problem" : "Save Changes"}

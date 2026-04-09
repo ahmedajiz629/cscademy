@@ -26,6 +26,14 @@ export interface SoftwareEngineeringEvaluationResult {
   submissionRef: string;
 }
 
+interface ParsedEvaluationResult {
+  status: "passed" | "failed";
+  score: number;
+  tokenCount: number | null;
+  reason?: string;
+  lastLine: string;
+}
+
 function coerceNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -106,7 +114,7 @@ function parseEvaluationResult(
   submissionRef: string,
   exitCode: number | null,
   timedOut: boolean
-) {
+): ParsedEvaluationResult {
   const lastLine = getLastNonEmptyLine(logs);
 
   if (timedOut) {

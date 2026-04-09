@@ -202,6 +202,38 @@ arm`,
       referer:
         "https://csacademy.com/contest/interview-archive/task/one_letter/",
     },
+    {
+      trackSlug: "software-engineering",
+      slug: "challenge-1",
+      name: "Challenge 1",
+      description: `Clone the public starter repository, implement the required fixes, and make the test suite pass.
+
+Workflow
+1. Clone the public starter repository locally.
+2. Work on the task until the tests pass.
+3. Push your solution to a private GitHub repository.
+4. Create a fine-grained GitHub token with contents:read access to that repository.
+5. Submit the private repository URL, token, and the branch that contains your solution.
+
+Evaluation
+The platform runs a Docker challenge runner against your private branch with:
+- REPO_URL=https://github.com/<user>/<repo>
+- SUBMISSION_REF=challenge
+- BASE_COMMIT=fe8afb
+- ACCESS_TOKEN=github_pat_<...>
+- image: ajiztech/challenge-1
+
+Result rules
+- {"status":"passed","tokenCount":4789,"score":13.20} means the score is 13.20
+- fatal: could not read Username for 'https://github.com': No such device or address means the token did not work
+- fatal: couldn't find remote ref <branch> means the submitted branch does not exist
+- {"status":"failed","reason":"tests failed"} means evaluation completed but the tests did not pass`,
+      points: 20,
+      order: 1,
+      evaluationImage: "ajiztech/challenge-1",
+      baseCommit: "fe8afb",
+      defaultSubmissionRef: "challenge",
+    },
   ];
 }
 
@@ -259,9 +291,26 @@ async function seed() {
     "trackProblems:clearByTrack",
     { trackSlug: "algorithmics" }
   );
-  if (clearedLangs || clearedProblems)
+  const clearedSoftwareEngineeringLangs = await client.mutation(
+    "programmingLanguages:clearByTrack",
+    { trackSlug: "software-engineering" }
+  );
+  const clearedSoftwareEngineeringProblems = await client.mutation(
+    "trackProblems:clearByTrack",
+    { trackSlug: "software-engineering" }
+  );
+  if (
+    clearedLangs ||
+    clearedProblems ||
+    clearedSoftwareEngineeringLangs ||
+    clearedSoftwareEngineeringProblems
+  )
     console.log(
-      `✓ Cleared ${clearedLangs} old languages, ${clearedProblems} old problems`
+      `✓ Cleared ${
+        clearedLangs + clearedSoftwareEngineeringLangs
+      } old languages, ${
+        clearedProblems + clearedSoftwareEngineeringProblems
+      } old problems`
     );
 
   // 5. Seed languages for the algorithmics track

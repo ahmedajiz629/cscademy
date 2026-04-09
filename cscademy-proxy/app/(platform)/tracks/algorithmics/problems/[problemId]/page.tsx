@@ -8,6 +8,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import track from "@/lib/tracks/algorithmics";
+import { formatScore } from "@/lib/score-format";
 import {
   buildOfflineProbeUrl,
   formatOfflineClosedReason,
@@ -496,7 +497,7 @@ export default function AlgorithmicsProblemIDEPage() {
         }
 
         const lines: string[] = [];
-        if (sc !== null) lines.push(`Score: ${sc.toFixed(0)}/100`);
+        if (sc !== null) lines.push(`Score: ${formatScore(sc)}/100`);
         if (results.tests && Array.isArray(results.tests)) {
           const passed = results.tests.filter((t: any) => t.checkerScore === 1).length;
           lines.push(`Tests: ${passed}/${results.tests.length} passed`);
