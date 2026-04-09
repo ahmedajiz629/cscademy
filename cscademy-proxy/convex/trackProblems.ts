@@ -66,9 +66,25 @@ export const create = mutation({
     starterCode: v.optional(v.string()),
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    evaluationImage: v.optional(v.string()),
+    baseCommit: v.optional(v.string()),
+    defaultSubmissionRef: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (args.trackSlug === "software-engineering") {
+      const existing = await ctx.db
+        .query("trackProblems")
+        .withIndex("by_trackSlug", (q) => q.eq("trackSlug", args.trackSlug))
+        .collect();
+
+      if (existing.length > 0) {
+        throw new Error(
+          "The software engineering track supports a single challenge only."
+        );
+      }
+    }
+
     return ctx.db.insert("trackProblems", args);
   },
 });
@@ -85,6 +101,9 @@ export const update = mutation({
     starterCode: v.optional(v.string()),
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    evaluationImage: v.optional(v.string()),
+    baseCommit: v.optional(v.string()),
+    defaultSubmissionRef: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {

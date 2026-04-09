@@ -14,12 +14,19 @@ export const getByUserAndTrack = query({
 });
 
 export const getByUserAndProblem = query({
-  args: { userId: v.id("users"), problemSlug: v.string() },
-  handler: async (ctx, { userId, problemSlug }) => {
+  args: {
+    userId: v.id("users"),
+    trackSlug: v.string(),
+    problemSlug: v.string(),
+  },
+  handler: async (ctx, { userId, trackSlug, problemSlug }) => {
     return ctx.db
       .query("scores")
       .withIndex("by_user_problem", (q) =>
-        q.eq("userId", userId).eq("problemSlug", problemSlug)
+        q
+          .eq("userId", userId)
+          .eq("trackSlug", trackSlug)
+          .eq("problemSlug", problemSlug)
       )
       .first();
   },
@@ -52,7 +59,10 @@ export const upsert = mutation({
     const existing = await ctx.db
       .query("scores")
       .withIndex("by_user_problem", (q) =>
-        q.eq("userId", userId).eq("problemSlug", problemSlug)
+        q
+          .eq("userId", userId)
+          .eq("trackSlug", trackSlug)
+          .eq("problemSlug", problemSlug)
       )
       .first();
 

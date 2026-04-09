@@ -1,8 +1,9 @@
 import type { TrackModule } from "./types";
 import algorithmics from "./algorithmics";
+import softwareEngineering from "./software-engineering";
 
 /** All registered track modules */
-const ALL_TRACKS: TrackModule[] = [algorithmics];
+const ALL_TRACKS: TrackModule[] = [algorithmics, softwareEngineering];
 
 /** Map for O(1) lookup */
 const trackMap = new Map<string, TrackModule>(

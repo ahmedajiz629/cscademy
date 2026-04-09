@@ -34,6 +34,9 @@ export default defineSchema({
     starterCode: v.optional(v.string()), // JSON Record<langId, code>
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
+    evaluationImage: v.optional(v.string()),
+    baseCommit: v.optional(v.string()),
+    defaultSubmissionRef: v.optional(v.string()),
     isActive: v.optional(v.boolean()), // undefined/true = active, false = disabled
     isOffline: v.optional(v.boolean()), // undefined/false = regular online task
   })
@@ -91,5 +94,5 @@ export default defineSchema({
     lastAttemptAt: v.number(),
   })
     .index("by_user_track", ["userId", "trackSlug"])
-    .index("by_user_problem", ["userId", "problemSlug"]),
+    .index("by_user_problem", ["userId", "trackSlug", "problemSlug"]),
 });
