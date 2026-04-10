@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       baseCommit: problem.baseCommit,
       accessToken,
       image: problem.evaluationImage,
+      extraDockerEnvVars: problem.extraDockerEnvVars,
     });
 
     if (result.status === "passed") {

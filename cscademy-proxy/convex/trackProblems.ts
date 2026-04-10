@@ -52,6 +52,39 @@ function assertLogicReverseEngineeringConfig(
   }
 }
 
+function assertSoftwareEngineeringExtraDockerEnvVars(value?: string | null) {
+  if (!value?.trim()) {
+    return;
+  }
+
+  const invalidLines: string[] = [];
+
+  for (const rawLine of value.split(/\r?\n/)) {
+    const trimmedLine = rawLine.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmedLine.indexOf("=");
+    if (separatorIndex <= 0) {
+      invalidLines.push(trimmedLine);
+      continue;
+    }
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      invalidLines.push(trimmedLine);
+    }
+  }
+
+  if (invalidLines.length > 0) {
+    throw new Error(
+      "Extra Docker env vars must use KEY=value format, one per line."
+    );
+  }
+}
+
 async function getAlgorithmicsConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
   const configs = await ctx.db
     .query("algorithmicsProblemConfigs")
@@ -133,6 +166,7 @@ async function upsertSoftwareEngineeringConfig(
     evaluationImage?: string;
     baseCommit?: string;
     defaultSubmissionRef?: string;
+    extraDockerEnvVars?: string;
   }
 ) {
   const existingConfig = await getSoftwareEngineeringConfigByProblemId(ctx, problemId);
@@ -272,6 +306,7 @@ async function mergeProblemWithConfig(
     evaluationImage: undefined as string | undefined,
     baseCommit: undefined as string | undefined,
     defaultSubmissionRef: undefined as string | undefined,
+    extraDockerEnvVars: undefined as string | undefined,
     judgeFilePath: undefined as string | undefined,
     evaluationCommand: undefined as string | undefined,
     starterSubmission: undefined as string | undefined,
@@ -304,6 +339,7 @@ async function mergeProblemWithConfig(
       evaluationImage: config?.evaluationImage,
       baseCommit: config?.baseCommit,
       defaultSubmissionRef: config?.defaultSubmissionRef,
+      extraDockerEnvVars: config?.extraDockerEnvVars,
     };
   }
 
@@ -468,6 +504,7 @@ export const create = mutation({
     evaluationImage: v.optional(v.string()),
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
+    extraDockerEnvVars: v.optional(v.string()),
     judgeFilePath: v.optional(v.string()),
     evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
@@ -482,6 +519,8 @@ export const create = mutation({
     await requireAdminOrService(ctx);
 
     if (args.trackSlug === "software-engineering") {
+      assertSoftwareEngineeringExtraDockerEnvVars(args.extraDockerEnvVars);
+
       const existing = await ctx.db
         .query("trackProblems")
         .withIndex("by_trackSlug", (q) => q.eq("trackSlug", args.trackSlug))
@@ -530,6 +569,7 @@ export const create = mutation({
         evaluationImage: args.evaluationImage,
         baseCommit: args.baseCommit,
         defaultSubmissionRef: args.defaultSubmissionRef,
+        extraDockerEnvVars: args.extraDockerEnvVars,
       });
     }
 
@@ -570,6 +610,7 @@ export const update = mutation({
     evaluationImage: v.optional(v.string()),
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
+    extraDockerEnvVars: v.optional(v.string()),
     judgeFilePath: v.optional(v.string()),
     evaluationCommand: v.optional(v.string()),
     starterSubmission: v.optional(v.string()),
@@ -596,6 +637,10 @@ export const update = mutation({
 
     if (problem.trackSlug === "logic-reverse-engineering") {
       assertLogicReverseEngineeringConfig(fields, existingLogicConfig);
+    }
+
+    if (problem.trackSlug === "software-engineering") {
+      assertSoftwareEngineeringExtraDockerEnvVars(fields.extraDockerEnvVars);
     }
 
     const sharedFields = cleanFields({
@@ -628,6 +673,7 @@ export const update = mutation({
         evaluationImage: fields.evaluationImage,
         baseCommit: fields.baseCommit,
         defaultSubmissionRef: fields.defaultSubmissionRef,
+        extraDockerEnvVars: fields.extraDockerEnvVars,
       });
     }
 

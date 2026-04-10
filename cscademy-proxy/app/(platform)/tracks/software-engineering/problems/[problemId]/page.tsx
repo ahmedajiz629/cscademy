@@ -32,31 +32,74 @@ function quoteCommandValue(value: string): string {
   return `"${value.replace(/(["\\])/g, "\\$1")}"`;
 }
 
+function parseExtraDockerEnvVars(rawValue?: string | null): Array<{
+  key: string;
+  value: string;
+}> {
+  const entries: Array<{ key: string; value: string }> = [];
+
+  for (const rawLine of (rawValue ?? "").split(/\r?\n/)) {
+    const trimmedLine = rawLine.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmedLine.indexOf("=");
+    if (separatorIndex <= 0) {
+      return [];
+    }
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      return [];
+    }
+
+    entries.push({
+      key,
+      value: trimmedLine.slice(separatorIndex + 1),
+    });
+  }
+
+  return entries;
+}
+
 function buildLocalCommand({
   repoUrl,
   submissionRef,
   baseCommit,
   accessToken,
   image,
+  extraDockerEnvVars,
 }: {
   repoUrl: string;
   submissionRef: string;
   baseCommit?: string;
   accessToken: string;
   image?: string;
+  extraDockerEnvVars?: string;
 }): string | null {
   const normalizedRepoUrl = repoUrl.trim();
   const normalizedSubmissionRef = submissionRef.trim() || "challenge";
   const normalizedBaseCommit = baseCommit?.trim() || "";
   const normalizedToken = accessToken.trim();
   const normalizedImage = image?.trim() || "";
+  const entries = parseExtraDockerEnvVars(extraDockerEnvVars);
 
-  if (!normalizedBaseCommit || !normalizedImage) {
+  if (
+    !normalizedBaseCommit ||
+    !normalizedImage ||
+    (extraDockerEnvVars?.trim() && entries.length === 0)
+  ) {
     return null;
   }
 
   return [
     "docker run -i --rm",
+    ...entries.flatMap(({ key, value }) => [
+      "-e",
+      quoteCommandValue(`${key}=${value}`),
+    ]),
     "-e",
     quoteCommandValue(`REPO_URL=${normalizedRepoUrl}`),
     "-e",
@@ -220,6 +263,7 @@ export default function SoftwareEngineeringProblemPage() {
     baseCommit: problem.baseCommit,
     accessToken,
     image: problem.evaluationImage,
+    extraDockerEnvVars: problem.extraDockerEnvVars,
   });
 
   return (
@@ -405,7 +449,7 @@ export default function SoftwareEngineeringProblemPage() {
                   readOnly
                   value={
                     localCommand ||
-                    "This challenge is not configured yet. Add a Docker image and base commit first."
+                    "This challenge is not configured correctly yet. Add a Docker image, base commit, and valid extra env vars first."
                   }
                   rows={6}
                   spellCheck={false}

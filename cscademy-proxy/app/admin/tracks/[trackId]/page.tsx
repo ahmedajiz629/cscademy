@@ -29,6 +29,7 @@ type Problem = {
   evaluationCommand?: string;
   baseCommit?: string;
   defaultSubmissionRef?: string;
+  extraDockerEnvVars?: string;
   judgeFilePath?: string;
   starterSubmission?: string;
   downloadableFilePath?: string;
@@ -51,6 +52,7 @@ const EMPTY_FORM = {
   evaluationCommand: "",
   baseCommit: "",
   defaultSubmissionRef: "challenge",
+  extraDockerEnvVars: "",
   judgeFilePath: "",
   starterSubmission: "",
   downloadableFilePath: "",
@@ -59,6 +61,31 @@ const EMPTY_FORM = {
   isOffline: false,
   offlineTaskPreDescription: "",
 };
+
+function parseExtraDockerEnvVars(rawValue?: string | null) {
+  const invalidLines: string[] = [];
+
+  for (const rawLine of (rawValue ?? "").split(/\r?\n/)) {
+    const trimmedLine = rawLine.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmedLine.indexOf("=");
+    if (separatorIndex <= 0) {
+      invalidLines.push(trimmedLine);
+      continue;
+    }
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      invalidLines.push(trimmedLine);
+    }
+  }
+
+  return { invalidLines };
+}
 
 export default function AdminTrackDetailPage() {
   const params = useParams();
@@ -152,6 +179,7 @@ export default function AdminTrackDetailPage() {
       evaluationCommand: p.evaluationCommand ?? "",
       baseCommit: p.baseCommit ?? "",
       defaultSubmissionRef: p.defaultSubmissionRef ?? "challenge",
+      extraDockerEnvVars: p.extraDockerEnvVars ?? "",
       judgeFilePath: p.judgeFilePath ?? "",
       starterSubmission: p.starterSubmission ?? "",
       downloadableFilePath: p.downloadableFilePath ?? "",
@@ -214,6 +242,9 @@ export default function AdminTrackDetailPage() {
       const defaultSubmissionRef = isSoftwareEngineeringTrack
         ? form.defaultSubmissionRef.trim() || undefined
         : undefined;
+      const extraDockerEnvVars = isSoftwareEngineeringTrack
+        ? form.extraDockerEnvVars.trim() || undefined
+        : undefined;
       const judgeFilePath = isLogicReverseEngineeringTrack
         ? form.judgeFilePath.trim() || undefined
         : undefined;
@@ -230,6 +261,15 @@ export default function AdminTrackDetailPage() {
       const offlineTaskPreDescription = form.isOffline
         ? form.offlineTaskPreDescription.trim()
         : "";
+
+      if (isSoftwareEngineeringTrack) {
+        const { invalidLines } = parseExtraDockerEnvVars(form.extraDockerEnvVars);
+        if (invalidLines.length > 0) {
+          throw new Error(
+            `Extra Docker env vars must use KEY=value format, one per line. Invalid lines: ${invalidLines.join(", ")}`
+          );
+        }
+      }
 
       if (isCtfTrack) {
         const response = await fetch(
@@ -288,6 +328,7 @@ export default function AdminTrackDetailPage() {
           evaluationCommand,
           baseCommit,
           defaultSubmissionRef,
+          extraDockerEnvVars,
           judgeFilePath,
           starterSubmission,
           downloadableFilePath,
@@ -318,6 +359,7 @@ export default function AdminTrackDetailPage() {
           evaluationCommand,
           baseCommit,
           defaultSubmissionRef,
+          extraDockerEnvVars,
           judgeFilePath,
           starterSubmission,
           downloadableFilePath,
@@ -673,6 +715,23 @@ export default function AdminTrackDetailPage() {
                     className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                     placeholder="challenge"
                   />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">
+                    Extra Docker Env Vars
+                  </label>
+                  <textarea
+                    rows={5}
+                    value={form.extraDockerEnvVars}
+                    onChange={(e) =>
+                      setForm({ ...form, extraDockerEnvVars: e.target.value })
+                    }
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                    placeholder={"FEATURE_FLAG=1\nLOCALE=fr\n# Blank lines and comments are allowed"}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    One KEY=value pair per line. These values are passed to the Docker image for both server evaluation and the generated local Docker command.
+                  </p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-gray-500">

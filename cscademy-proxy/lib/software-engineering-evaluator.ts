@@ -12,6 +12,7 @@ export interface SoftwareEngineeringEvaluationConfig {
   baseCommit: string;
   accessToken: string;
   image: string;
+  extraDockerEnvVars?: string;
   timeoutMs?: number;
 }
 
@@ -32,6 +33,42 @@ interface ParsedEvaluationResult {
   tokenCount: number | null;
   reason?: string;
   lastLine: string;
+}
+
+function parseExtraDockerEnvVars(rawValue?: string | null): Array<{
+  key: string;
+  value: string;
+}> {
+  const entries: Array<{ key: string; value: string }> = [];
+
+  for (const rawLine of (rawValue ?? "").split(/\r?\n/)) {
+    const trimmedLine = rawLine.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = trimmedLine.indexOf("=");
+    if (separatorIndex <= 0) {
+      throw new SoftwareEngineeringValidationError(
+        "Extra Docker env vars must use KEY=value format, one per line."
+      );
+    }
+
+    const key = trimmedLine.slice(0, separatorIndex).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new SoftwareEngineeringValidationError(
+        "Extra Docker env vars must use KEY=value format, one per line."
+      );
+    }
+
+    entries.push({
+      key,
+      value: trimmedLine.slice(separatorIndex + 1),
+    });
+  }
+
+  return entries;
 }
 
 function coerceNumber(value: unknown): number | null {
@@ -270,6 +307,7 @@ export async function runSoftwareEngineeringEvaluation(
   config: SoftwareEngineeringEvaluationConfig
 ): Promise<SoftwareEngineeringEvaluationResult> {
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const entries = parseExtraDockerEnvVars(config.extraDockerEnvVars);
 
   return new Promise<SoftwareEngineeringEvaluationResult>((resolve, reject) => {
     const logs: string[] = [];
@@ -281,6 +319,7 @@ export async function runSoftwareEngineeringEvaluation(
         "run",
         "-i",
         "--rm",
+        ...entries.flatMap(({ key, value }) => ["-e", `${key}=${value}`]),
         "-e",
         `REPO_URL=${config.repoUrl}`,
         "-e",

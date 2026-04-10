@@ -54,6 +54,7 @@ export default defineSchema({
     evaluationImage: v.optional(v.string()),
     baseCommit: v.optional(v.string()),
     defaultSubmissionRef: v.optional(v.string()),
+    extraDockerEnvVars: v.optional(v.string()),
   }).index("by_problemId", ["problemId"]),
 
   // Logic & reverse engineering-only problem settings
