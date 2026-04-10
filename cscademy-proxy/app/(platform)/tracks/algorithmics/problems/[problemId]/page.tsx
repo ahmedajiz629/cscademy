@@ -118,6 +118,15 @@ export default function AlgorithmicsProblemIDEPage() {
         }
       : "skip"
   );
+  const scoreRecords = useQuery(
+    api.scores.getByUserAndTrack,
+    user?.id
+      ? {
+          userId: user.id as Id<"users">,
+          trackSlug: trackId,
+        }
+      : "skip"
+  );
 
   const [langId, setLangId] = useState("");
   const [code, setCode] = useState("");
@@ -773,6 +782,18 @@ export default function AlgorithmicsProblemIDEPage() {
     );
   }
 
+  const isBestScoreLoading = !!user?.id && scoreRecords === undefined;
+  const bestScore =
+    scoreRecords?.find((entry) => entry.problemSlug === problemId)?.score ?? null;
+  const bestScoreClassName =
+    bestScore === null
+      ? "text-gray-500"
+      : bestScore >= problem.points
+        ? "text-green-400"
+        : bestScore > 0
+          ? "text-yellow-400"
+          : "text-gray-500";
+
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a]">
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-[#111127]">
@@ -786,6 +807,17 @@ export default function AlgorithmicsProblemIDEPage() {
           <span className="text-gray-600">|</span>
           <span className="text-white font-medium">{problem.name}</span>
           <span className="text-gray-500 text-xs">{problem.points} pts</span>
+          <span className="text-gray-600">·</span>
+          <span className="text-xs text-gray-500">
+            Best:{" "}
+            <span className={`font-bold ${isBestScoreLoading ? "text-gray-300" : bestScoreClassName}`}>
+              {isBestScoreLoading
+                ? "Loading..."
+                : bestScore !== null
+                  ? `${formatScore(bestScore)}/${problem.points}`
+                  : "—"}
+            </span>
+          </span>
           {problem.isOffline && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wide">
               Offline Active
