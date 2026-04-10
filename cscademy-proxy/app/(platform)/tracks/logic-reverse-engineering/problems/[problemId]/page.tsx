@@ -9,6 +9,7 @@ import { api } from "@/convex/_generated/api";
 import OutputPanel from "@/components/OutputPanel";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/logic-reverse-engineering";
+import ProblemLeaderboardPanel from "@/components/leaderboards/ProblemLeaderboardPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
   ssr: false,
@@ -27,6 +28,7 @@ interface ProblemDetails {
   judgeFilePath?: string;
   evaluationImage?: string;
   starterSubmission?: string;
+  leaderboardVisible?: boolean;
 }
 
 interface EvaluationResult {
@@ -85,6 +87,7 @@ export default function LogicReverseEngineeringProblemPage() {
   const [output, setOutput] = useState("");
   const [isError, setIsError] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [activeTab, setActiveTab] = useState<"details" | "leaderboard">("details");
 
   const problem = useQuery(api.trackProblems.getBySlug, {
     trackSlug: track.id,
@@ -176,6 +179,35 @@ export default function LogicReverseEngineeringProblemPage() {
           ← Back to Logic & Reverse Engineering
         </Link>
       </div>
+
+      {problem.leaderboardVisible && (
+        <div className="mb-6 flex items-center gap-2 border-b border-gray-800">
+          <button
+            onClick={() => setActiveTab("details")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "details"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Task
+          </button>
+          <button
+            onClick={() => setActiveTab("leaderboard")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "leaderboard"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Leaderboard
+          </button>
+        </div>
+      )}
+
+      {problem.leaderboardVisible && activeTab === "leaderboard" ? (
+        <ProblemLeaderboardPanel trackSlug={track.id} problemSlug={problemId} />
+      ) : (
 
       <div className="flex min-w-0 flex-col gap-6 xl:grid xl:grid-cols-[1fr_1fr]">
         <section className="min-w-0 space-y-6">
@@ -302,6 +334,7 @@ export default function LogicReverseEngineeringProblemPage() {
           </div>
         </section>
       </div>
+      )}
     </div>
   );
 }

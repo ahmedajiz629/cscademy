@@ -32,6 +32,9 @@ export async function PATCH(
         externalLink: String(body.externalLink ?? "").trim(),
         flagHash: rawFlag ? hashCtfFlag(rawFlag) : undefined,
         isOffline: Boolean(body.isOffline),
+        offlineTaskPreDescription: Boolean(body.isOffline)
+          ? String(body.offlineTaskPreDescription ?? "").trim()
+          : "",
       }
     );
 

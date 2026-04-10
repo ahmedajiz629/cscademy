@@ -7,6 +7,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/ctf";
+import ProblemLeaderboardPanel from "@/components/leaderboards/ProblemLeaderboardPanel";
 
 interface ProblemDetails {
   slug: string;
@@ -15,6 +16,7 @@ interface ProblemDetails {
   points: number;
   downloadableFilePath?: string;
   externalLink?: string;
+  leaderboardVisible?: boolean;
 }
 
 interface SubmissionResult {
@@ -48,6 +50,7 @@ export default function CtfProblemPage() {
   const [submittedFlag, setSubmittedFlag] = useState("");
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<"details" | "leaderboard">("details");
 
   const problem = useQuery(api.trackProblems.getBySlug, {
     trackSlug: track.id,
@@ -135,6 +138,35 @@ export default function CtfProblemPage() {
           ← Back to CTF
         </Link>
       </div>
+
+      {problem.leaderboardVisible && (
+        <div className="mb-6 flex items-center gap-2 border-b border-gray-800">
+          <button
+            onClick={() => setActiveTab("details")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "details"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Challenge
+          </button>
+          <button
+            onClick={() => setActiveTab("leaderboard")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "leaderboard"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Leaderboard
+          </button>
+        </div>
+      )}
+
+      {problem.leaderboardVisible && activeTab === "leaderboard" ? (
+        <ProblemLeaderboardPanel trackSlug={track.id} problemSlug={problemId} />
+      ) : (
 
       <div className="flex min-w-0 flex-col gap-6 xl:grid xl:grid-cols-[1.1fr_0.9fr]">
         <section className="min-w-0 space-y-6">
@@ -283,6 +315,7 @@ export default function CtfProblemPage() {
           </div>
         </section>
       </div>
+      )}
     </div>
   );
 }

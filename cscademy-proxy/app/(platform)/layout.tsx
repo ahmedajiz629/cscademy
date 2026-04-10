@@ -4,7 +4,9 @@ import { useCallback, useEffect } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { Id } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
+import ParticipantNotifications from "@/components/ParticipantNotifications";
 
 export default function DashboardLayout({
   children,
@@ -15,6 +17,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const user = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
+  const platformSettings = useQuery(api.platformSettings.get);
 
   useEffect(() => {
     if (isLoading || user === undefined) {
@@ -42,6 +45,9 @@ export default function DashboardLayout({
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: "⊞" },
     { href: "/tracks", label: "Tracks", icon: "▤" },
+    ...((platformSettings?.globalLeaderboardVisible ?? false)
+      ? [{ href: "/leaderboard", label: "Leaderboard", icon: "≣" }]
+      : []),
   ];
 
   return (
@@ -100,7 +106,12 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto">
+        {user.role === "student" && (
+          <ParticipantNotifications userId={user._id as Id<"users">} />
+        )}
+        {children}
+      </main>
     </div>
   );
 }

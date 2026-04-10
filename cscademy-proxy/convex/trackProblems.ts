@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireAdminOrService, requireService } from "./auth";
+import { insertProblemAvailabilityNotification } from "./notificationHelpers";
 
 type BaseProblem = Doc<"trackProblems">;
 
@@ -277,6 +278,8 @@ async function mergeProblemWithConfig(
     downloadableFilePath: undefined as string | undefined,
     externalLink: undefined as string | undefined,
     isOffline: problem.isOffline ?? false,
+    offlineTaskPreDescription: problem.offlineTaskPreDescription,
+    leaderboardVisible: problem.leaderboardVisible ?? false,
   };
 
   if (problem.trackSlug === "algorithmics") {
@@ -370,6 +373,32 @@ export const listByTrackAdmin = query({
   },
 });
 
+export const listAllAdmin = query({
+  handler: async (ctx) => {
+    await requireAdminOrService(ctx);
+
+    const problems = await ctx.db.query("trackProblems").collect();
+
+    const mergedProblems = await Promise.all(
+      problems.map((problem) =>
+        mergeProblemWithConfig(ctx, problem, { includeSecrets: true })
+      )
+    );
+
+    return mergedProblems.sort((left, right) => {
+      if (left.trackSlug !== right.trackSlug) {
+        return left.trackSlug.localeCompare(right.trackSlug);
+      }
+
+      if (left.order !== right.order) {
+        return left.order - right.order;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  },
+});
+
 export const getBySlug = query({
   args: { trackSlug: v.string(), slug: v.string() },
   handler: async (ctx, { trackSlug, slug }) => {
@@ -446,6 +475,8 @@ export const create = mutation({
     externalLink: v.optional(v.string()),
     flagHash: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
+    offlineTaskPreDescription: v.optional(v.string()),
+    leaderboardVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireAdminOrService(ctx);
@@ -479,6 +510,8 @@ export const create = mutation({
       points: args.points,
       order: args.order,
       isOffline: args.isOffline,
+      offlineTaskPreDescription: args.offlineTaskPreDescription,
+      leaderboardVisible: args.leaderboardVisible,
     });
 
     if (args.trackSlug === "algorithmics") {
@@ -544,6 +577,8 @@ export const update = mutation({
     externalLink: v.optional(v.string()),
     flagHash: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
+    offlineTaskPreDescription: v.optional(v.string()),
+    leaderboardVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
     await requireAdminOrService(ctx);
@@ -569,6 +604,8 @@ export const update = mutation({
       points: fields.points,
       order: fields.order,
       isOffline: fields.isOffline,
+      offlineTaskPreDescription: fields.offlineTaskPreDescription,
+      leaderboardVisible: fields.leaderboardVisible,
     });
 
     if (Object.keys(sharedFields).length > 0) {
@@ -650,8 +687,34 @@ export const setActive = mutation({
   args: { id: v.id("trackProblems"), isActive: v.boolean() },
   handler: async (ctx, { id, isActive }) => {
     await requireAdminOrService(ctx);
+    const problem = await ctx.db.get(id);
+
+    if (!problem) {
+      throw new Error("Problem not found.");
+    }
+
+    const previousEffectiveState = problem.isActive !== false;
 
     await ctx.db.patch(id, { isActive });
+
+    if (previousEffectiveState !== isActive) {
+      await insertProblemAvailabilityNotification(ctx, problem, isActive);
+    }
+  },
+});
+
+export const setLeaderboardVisible = mutation({
+  args: { id: v.id("trackProblems"), leaderboardVisible: v.boolean() },
+  handler: async (ctx, { id, leaderboardVisible }) => {
+    await requireAdminOrService(ctx);
+
+    const problem = await ctx.db.get(id);
+
+    if (!problem) {
+      throw new Error("Problem not found.");
+    }
+
+    await ctx.db.patch(id, { leaderboardVisible });
   },
 });
 

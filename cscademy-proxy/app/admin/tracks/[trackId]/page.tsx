@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
@@ -22,6 +22,8 @@ type Problem = {
   starterCode?: string;
   isActive?: boolean;
   isOffline?: boolean;
+  offlineTaskPreDescription?: string;
+  leaderboardVisible?: boolean;
   publicRepositoryUrl?: string;
   evaluationImage?: string;
   evaluationCommand?: string;
@@ -55,6 +57,7 @@ const EMPTY_FORM = {
   externalLink: "",
   flag: "",
   isOffline: false,
+  offlineTaskPreDescription: "",
 };
 
 export default function AdminTrackDetailPage() {
@@ -70,37 +73,51 @@ export default function AdminTrackDetailPage() {
   const updateProblem = useMutation(api.trackProblems.update);
   const removeProblem = useMutation(api.trackProblems.remove);
   const setProblemActive = useMutation(api.trackProblems.setActive);
+  const setProblemLeaderboardVisible = useMutation(api.trackProblems.setLeaderboardVisible);
   const setActive = useMutation(api.trackSettings.setActive);
+  const setTrackLeaderboardConfig = useMutation(api.trackSettings.setLeaderboardConfig);
 
   const [mode, setMode] = useState<"view" | "add" | "edit">("view");
   const [editingId, setEditingId] = useState<Id<"trackProblems"> | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Id<"trackProblems"> | null>(null);
+  const [trackLeaderboardVisibleDraft, setTrackLeaderboardVisibleDraft] = useState(false);
+  const [trackCoefficientDraft, setTrackCoefficientDraft] = useState("1");
 
   const isSoftwareEngineeringTrack = trackId === "software-engineering";
   const isLogicReverseEngineeringTrack =
     trackId === "logic-reverse-engineering";
   const isCtfTrack = trackId === "ctf";
+  const isAlgorithmicsTrack = trackId === "algorithmics";
+  const isAlgorithmicsImportMode = isAlgorithmicsTrack && mode === "add";
   const canAddProblem =
     !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
-  const isFormValid =
-    !!form.name.trim() &&
-    !!form.description.trim() &&
-    (mode !== "add" || !!form.slug.trim()) &&
-    (!isSoftwareEngineeringTrack ||
-      (!!form.publicRepositoryUrl.trim() &&
-        !!form.evaluationImage.trim() &&
-        !!form.baseCommit.trim())) &&
-    (!isLogicReverseEngineeringTrack ||
-      (!!form.judgeFilePath.trim() &&
-        !!form.evaluationImage.trim() &&
-        !!form.evaluationCommand.trim())) &&
-    (!isCtfTrack || mode === "edit" || !!form.flag.trim());
+  const isFormValid = isAlgorithmicsImportMode
+    ? !!form.contestTaskId.trim()
+    : !!form.name.trim() &&
+      !!form.description.trim() &&
+      (mode !== "add" || !!form.slug.trim()) &&
+      (!isSoftwareEngineeringTrack ||
+        (!!form.publicRepositoryUrl.trim() &&
+          !!form.evaluationImage.trim() &&
+          !!form.baseCommit.trim())) &&
+      (!isLogicReverseEngineeringTrack ||
+        (!!form.judgeFilePath.trim() &&
+          !!form.evaluationImage.trim() &&
+          !!form.evaluationCommand.trim())) &&
+      (!isCtfTrack || mode === "edit" || !!form.flag.trim());
 
   const isActive = settings !== undefined
     ? (settings?.isActive ?? (track?.isActive ?? true))
     : (track?.isActive ?? true);
+  const isTrackLeaderboardVisible = settings?.leaderboardVisible === true;
+  const trackCoefficient = settings?.leaderboardCoefficient ?? 1;
+
+  useEffect(() => {
+    setTrackLeaderboardVisibleDraft(isTrackLeaderboardVisible);
+    setTrackCoefficientDraft(String(trackCoefficient));
+  }, [isTrackLeaderboardVisible, trackCoefficient]);
 
   if (!track) {
     return <div className="p-8 text-gray-400">Track not found.</div>;
@@ -141,6 +158,7 @@ export default function AdminTrackDetailPage() {
       externalLink: p.externalLink ?? "",
       flag: "",
       isOffline: p.isOffline ?? false,
+      offlineTaskPreDescription: p.offlineTaskPreDescription ?? "",
     });
     setEditingId(p._id);
     setMode("edit");
@@ -154,6 +172,25 @@ export default function AdminTrackDetailPage() {
   async function handleSave() {
     setSaving(true);
     try {
+      if (isAlgorithmicsImportMode) {
+        const response = await fetch("/api/admin/algorithmics/problems", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contestTaskId: Number(form.contestTaskId),
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || "Failed to import CSAcademy problem.");
+        }
+
+        setMode("view");
+        setEditingId(null);
+        return;
+      }
+
       const contestTaskId =
         !isSoftwareEngineeringTrack &&
         !isLogicReverseEngineeringTrack &&
@@ -190,6 +227,9 @@ export default function AdminTrackDetailPage() {
         ? form.externalLink.trim() || ""
         : undefined;
       const flag = isCtfTrack ? form.flag.trim() || undefined : undefined;
+      const offlineTaskPreDescription = form.isOffline
+        ? form.offlineTaskPreDescription.trim()
+        : "";
 
       if (isCtfTrack) {
         const response = await fetch(
@@ -209,6 +249,7 @@ export default function AdminTrackDetailPage() {
               externalLink,
               flag,
               isOffline: form.isOffline,
+              offlineTaskPreDescription,
             }),
           }
         );
@@ -252,6 +293,7 @@ export default function AdminTrackDetailPage() {
           downloadableFilePath,
           externalLink,
           isOffline: form.isOffline,
+          offlineTaskPreDescription,
         });
       } else if (mode === "edit" && editingId) {
         await updateProblem({
@@ -281,6 +323,7 @@ export default function AdminTrackDetailPage() {
           downloadableFilePath,
           externalLink,
           isOffline: form.isOffline,
+          offlineTaskPreDescription,
         });
       }
       setMode("view");
@@ -295,6 +338,28 @@ export default function AdminTrackDetailPage() {
   async function handleDelete(id: Id<"trackProblems">) {
     await removeProblem({ id });
     setDeleteConfirm(null);
+  }
+
+  async function handleSaveTrackLeaderboardConfig(nextVisible?: boolean) {
+    const parsedCoefficient = Number(trackCoefficientDraft);
+    if (!Number.isFinite(parsedCoefficient) || parsedCoefficient < 0) {
+      alert("Track coefficient must be a valid non-negative number.");
+      setTrackCoefficientDraft(String(trackCoefficient));
+      return;
+    }
+
+    try {
+      await setTrackLeaderboardConfig({
+        trackSlug: trackId,
+        leaderboardVisible: nextVisible ?? trackLeaderboardVisibleDraft,
+        leaderboardCoefficient: parsedCoefficient,
+        currentIsActive: isActive,
+      });
+    } catch (error: any) {
+      alert(error.message || "Failed to update leaderboard settings.");
+      setTrackLeaderboardVisibleDraft(isTrackLeaderboardVisible);
+      setTrackCoefficientDraft(String(trackCoefficient));
+    }
   }
 
   return (
@@ -329,23 +394,69 @@ export default function AdminTrackDetailPage() {
         </div>
 
         {/* Track active toggle */}
-        <div className="flex items-center gap-3">
-          <span className={`text-sm font-medium ${isActive ? "text-green-400" : "text-gray-500"}`}>
-            {isActive ? "Active" : "Inactive"}
-          </span>
-          <button
-            onClick={() => setActive({ trackSlug: trackId, isActive: !isActive })}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-              isActive ? "bg-green-500" : "bg-gray-600"
-            }`}
-            title={isActive ? "Disable track" : "Enable track"}
-          >
-            <span
-              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
-                isActive ? "translate-x-5" : "translate-x-0"
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-medium ${isActive ? "text-green-400" : "text-gray-500"}`}>
+              {isActive ? "Active" : "Inactive"}
+            </span>
+            <button
+              onClick={() => setActive({ trackSlug: trackId, isActive: !isActive })}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                isActive ? "bg-green-500" : "bg-gray-600"
               }`}
+              title={isActive ? "Disable track" : "Enable track"}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                  isActive ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span
+              className={`text-sm font-medium ${
+                trackLeaderboardVisibleDraft ? "text-blue-400" : "text-gray-500"
+              }`}
+            >
+              Leaderboard
+            </span>
+            <button
+              onClick={() => {
+                const nextValue = !trackLeaderboardVisibleDraft;
+                setTrackLeaderboardVisibleDraft(nextValue);
+                void handleSaveTrackLeaderboardConfig(nextValue);
+              }}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                trackLeaderboardVisibleDraft ? "bg-blue-500" : "bg-gray-600"
+              }`}
+              title={
+                trackLeaderboardVisibleDraft
+                  ? "Disable track leaderboard"
+                  : "Enable track leaderboard"
+              }
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                  trackLeaderboardVisibleDraft ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-400">
+            <span>Coeff.</span>
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={trackCoefficientDraft}
+              onChange={(event) => setTrackCoefficientDraft(event.target.value)}
+              onBlur={() => void handleSaveTrackLeaderboardConfig()}
+              className="w-24 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-          </button>
+          </label>
         </div>
       </div>
 
@@ -396,7 +507,7 @@ export default function AdminTrackDetailPage() {
             onClick={startAdd}
             className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
-            + Add Problem
+            {isAlgorithmicsTrack ? "+ Import From CSAcademy" : "+ Add Problem"}
           </button>
         )}
       </div>
@@ -410,10 +521,14 @@ export default function AdminTrackDetailPage() {
       {(mode === "add" || mode === "edit") && (
         <div className="mb-6 p-5 bg-[#111127] border border-blue-500/30 rounded-xl">
           <h3 className="text-sm font-semibold text-blue-400 mb-4">
-            {mode === "add" ? "New Problem" : "Edit Problem"}
+            {mode === "add"
+              ? isAlgorithmicsTrack
+                ? "Import Algorithmics Problem"
+                : "New Problem"
+              : "Edit Problem"}
           </h3>
           <div className="grid grid-cols-2 gap-4">
-            {mode === "add" && (
+            {mode === "add" && !isAlgorithmicsTrack && (
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs text-gray-400 mb-1">Slug (URL-safe, unique)</label>
                 <input
@@ -424,61 +539,102 @@ export default function AdminTrackDetailPage() {
                 />
               </div>
             )}
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Name</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="Problem Name"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Points</label>
-              <input
-                type="number"
-                value={form.points}
-                onChange={(e) => setForm({ ...form, points: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Order</label>
-              <input
-                type="number"
-                value={form.order}
-                onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
-                  form.isOffline
-                    ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-                    : "bg-gray-800 border-gray-700 text-gray-200"
-                }`}
-              >
-                <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
-                <span className="text-xs uppercase tracking-wide">
-                  {form.isOffline ? "Offline" : "Online"}
-                </span>
-              </button>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-400 mb-1">Description</label>
-              <textarea
-                rows={6}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
-                placeholder="Problem statement…"
-              />
-            </div>
-            {isSoftwareEngineeringTrack ? (
+            {!isAlgorithmicsImportMode && (
+              <>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Name</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Problem Name"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Points</label>
+                  <input
+                    type="number"
+                    value={form.points}
+                    onChange={(e) => setForm({ ...form, points: Number(e.target.value) })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Order</label>
+                  <input
+                    type="number"
+                    value={form.order}
+                    onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
+                      form.isOffline
+                        ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+                        : "bg-gray-800 border-gray-700 text-gray-200"
+                    }`}
+                  >
+                    <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
+                    <span className="text-xs uppercase tracking-wide">
+                      {form.isOffline ? "Offline" : "Online"}
+                    </span>
+                  </button>
+                </div>
+                {form.isOffline && (
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">
+                      Offline Pre-Description
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={form.offlineTaskPreDescription}
+                      onChange={(e) =>
+                        setForm({ ...form, offlineTaskPreDescription: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+                      placeholder="Information the participant needs before heading to the offline room for this task."
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Shown on this task&apos;s offline confirmation screen only.
+                    </p>
+                  </div>
+                )}
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Description</label>
+                  <textarea
+                    rows={6}
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                    placeholder="Problem statement…"
+                  />
+                </div>
+              </>
+            )}
+            {isAlgorithmicsImportMode ? (
+              <>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">CSAcademy Task ID</label>
+                  <input
+                    type="number"
+                    value={form.contestTaskId}
+                    onChange={(e) => setForm({ ...form, contestTaskId: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="e.g. 51724"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">
+                    The importer fetches the CSAcademy statement, samples, points, task URL, and default starter templates automatically. Order is assigned to the end of the current algorithmics list.
+                  </p>
+                </div>
+              </>
+            ) : isSoftwareEngineeringTrack ? (
               <>
                 <div className="col-span-2">
                   <label className="block text-xs text-gray-400 mb-1">Public Repository URL</label>
@@ -656,7 +812,13 @@ export default function AdminTrackDetailPage() {
               disabled={saving || !isFormValid}
               className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
             >
-              {saving ? "Saving…" : mode === "add" ? "Create Problem" : "Save Changes"}
+              {saving
+                ? "Saving…"
+                : mode === "add"
+                  ? isAlgorithmicsTrack
+                    ? "Import Problem"
+                    : "Create Problem"
+                  : "Save Changes"}
             </button>
             <button
               onClick={cancelForm}
@@ -693,12 +855,14 @@ export default function AdminTrackDetailPage() {
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Points</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Active</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Leaderboard</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody>
               {problems.map((p) => {
                 const problemActive = p.isActive !== false;
+                const problemLeaderboardVisible = p.leaderboardVisible === true;
                 return (
                 <tr key={p._id} className={`border-b border-gray-800/50 hover:bg-[#111127]/50 ${!problemActive ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 text-sm text-gray-500">{p.order}</td>
@@ -734,6 +898,30 @@ export default function AdminTrackDetailPage() {
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
                           problemActive ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() =>
+                        setProblemLeaderboardVisible({
+                          id: p._id,
+                          leaderboardVisible: !problemLeaderboardVisible,
+                        })
+                      }
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                        problemLeaderboardVisible ? "bg-blue-500" : "bg-gray-600"
+                      }`}
+                      title={
+                        problemLeaderboardVisible
+                          ? "Disable problem leaderboard"
+                          : "Enable problem leaderboard"
+                      }
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+                          problemLeaderboardVisible ? "translate-x-4" : "translate-x-0"
                         }`}
                       />
                     </button>

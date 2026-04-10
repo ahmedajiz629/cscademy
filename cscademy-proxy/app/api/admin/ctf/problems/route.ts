@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
         externalLink: String(body.externalLink ?? "").trim(),
         flagHash: hashCtfFlag(String(body.flag ?? "")),
         isOffline: Boolean(body.isOffline),
+        offlineTaskPreDescription: Boolean(body.isOffline)
+          ? String(body.offlineTaskPreDescription ?? "").trim()
+          : "",
       }
     );
 

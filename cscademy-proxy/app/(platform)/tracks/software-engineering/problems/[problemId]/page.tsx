@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import OutputPanel from "@/components/OutputPanel";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/software-engineering";
+import ProblemLeaderboardPanel from "@/components/leaderboards/ProblemLeaderboardPanel";
 
 interface EvaluationResult {
   status: "passed" | "failed";
@@ -124,6 +125,7 @@ export default function SoftwareEngineeringProblemPage() {
   const [output, setOutput] = useState("");
   const [isError, setIsError] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [activeTab, setActiveTab] = useState<"details" | "leaderboard">("details");
 
   const problem = useQuery(api.trackProblems.getBySlug, {
     trackSlug: track.id,
@@ -230,6 +232,35 @@ export default function SoftwareEngineeringProblemPage() {
           ← Back to Software Engineering
         </Link>
       </div>
+
+      {problem.leaderboardVisible && (
+        <div className="mb-6 flex items-center gap-2 border-b border-gray-800">
+          <button
+            onClick={() => setActiveTab("details")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "details"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Challenge
+          </button>
+          <button
+            onClick={() => setActiveTab("leaderboard")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "leaderboard"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Leaderboard
+          </button>
+        </div>
+      )}
+
+      {problem.leaderboardVisible && activeTab === "leaderboard" ? (
+        <ProblemLeaderboardPanel trackSlug={track.id} problemSlug={problemId} />
+      ) : (
 
       <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[1.15fr_0.85fr]">
         <section className="space-y-6">
@@ -422,6 +453,7 @@ export default function SoftwareEngineeringProblemPage() {
           </div>
         </section>
       </div>
+      )}
     </div>
   );
 }

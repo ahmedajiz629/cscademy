@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAdminOrService } from "./auth";
+import { insertTrackAvailabilityNotification } from "./notificationHelpers";
 
 /** Get the DB-stored active override for a specific track (null = use code default) */
 export const getBySlug = query({
@@ -31,10 +32,56 @@ export const setActive = mutation({
       .query("trackSettings")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .first();
+
+    const previousEffectiveState = existing?.isActive ?? true;
+
     if (existing) {
       await ctx.db.patch(existing._id, { isActive });
     } else {
       await ctx.db.insert("trackSettings", { trackSlug, isActive });
     }
+
+    if (previousEffectiveState !== isActive) {
+      await insertTrackAvailabilityNotification(ctx, trackSlug, isActive);
+    }
+  },
+});
+
+export const setLeaderboardConfig = mutation({
+  args: {
+    trackSlug: v.string(),
+    leaderboardVisible: v.boolean(),
+    leaderboardCoefficient: v.number(),
+    currentIsActive: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    { trackSlug, leaderboardVisible, leaderboardCoefficient, currentIsActive }
+  ) => {
+    await requireAdminOrService(ctx);
+
+    const normalizedCoefficient = Number.isFinite(leaderboardCoefficient)
+      ? Math.max(0, leaderboardCoefficient)
+      : 1;
+
+    const existing = await ctx.db
+      .query("trackSettings")
+      .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        leaderboardVisible,
+        leaderboardCoefficient: normalizedCoefficient,
+      });
+      return existing._id;
+    }
+
+    return ctx.db.insert("trackSettings", {
+      trackSlug,
+      isActive: currentIsActive ?? true,
+      leaderboardVisible,
+      leaderboardCoefficient: normalizedCoefficient,
+    });
   },
 });

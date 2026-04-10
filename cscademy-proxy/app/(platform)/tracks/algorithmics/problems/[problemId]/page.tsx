@@ -18,6 +18,7 @@ import {
 } from "@/lib/offline-gateway";
 import { isOfflineSessionStale } from "@/lib/offline-session";
 import OutputPanel from "@/components/OutputPanel";
+import ProblemLeaderboardPanel from "@/components/leaderboards/ProblemLeaderboardPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
   ssr: false,
@@ -37,6 +38,8 @@ interface ProblemDetails {
   sampleOutput?: string;
   starterCode?: string;
   isOffline?: boolean;
+  offlineTaskPreDescription?: string;
+  leaderboardVisible?: boolean;
   probeImageUrl?: string;
 }
 
@@ -45,6 +48,7 @@ interface OfflineProblemPreview {
   name: string;
   points: number;
   isOffline: true;
+  offlineTaskPreDescription?: string;
 }
 
 interface OfflineRuntimeConfig {
@@ -67,13 +71,16 @@ type ProblemAccessState =
   | { status: "ready"; problem: ProblemDetails };
 
 function toOfflineProblemPreview(
-  problem: Pick<ProblemDetails, "slug" | "name" | "points"> | OfflineProblemPreview
+  problem:
+    | Pick<ProblemDetails, "slug" | "name" | "points" | "offlineTaskPreDescription">
+    | OfflineProblemPreview
 ): OfflineProblemPreview {
   return {
     slug: problem.slug,
     name: problem.name,
     points: problem.points,
     isOffline: true,
+    offlineTaskPreDescription: problem.offlineTaskPreDescription,
   };
 }
 
@@ -89,6 +96,10 @@ export default function AlgorithmicsProblemIDEPage() {
   const problemRecord = useQuery(api.trackProblems.getBySlug, {
     trackSlug: trackId,
     slug: problemId,
+  });
+  const scoreRecord = useQuery(api.scores.getMineByProblem, {
+    trackSlug: trackId,
+    problemSlug: problemId,
   });
   const session = useQuery(api.offlineProblemSessions.getMineByUserAndProblem, {
     trackSlug: trackId,
@@ -106,6 +117,7 @@ export default function AlgorithmicsProblemIDEPage() {
   const [score, setScore] = useState<number | null>(null);
   const [isConnectingOffline, setIsConnectingOffline] = useState(false);
   const [offlineError, setOfflineError] = useState("");
+  const [activeTab, setActiveTab] = useState<"workspace" | "leaderboard">("workspace");
   const [optimisticClosedState, setOptimisticClosedState] = useState<
     | {
         problem: OfflineProblemPreview;
@@ -497,7 +509,7 @@ export default function AlgorithmicsProblemIDEPage() {
         }
 
         const lines: string[] = [];
-        if (sc !== null) lines.push(`Score: ${formatScore(sc)}/100`);
+        if (sc !== null) lines.push(`Score: ${formatScore(sc)}/${problem.points}`);
         if (results.tests && Array.isArray(results.tests)) {
           const passed = results.tests.filter((t: any) => t.checkerScore === 1).length;
           lines.push(`Tests: ${passed}/${results.tests.length} passed`);
@@ -715,6 +727,17 @@ export default function AlgorithmicsProblemIDEPage() {
             )}
           </div>
 
+          {!!problemState.problem.offlineTaskPreDescription?.trim() && (
+            <div className="mt-4 p-4 rounded-xl bg-[#0d0d1d] border border-gray-800 text-sm text-gray-200">
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-300 mb-2">
+                Before Heading To The Offline Room
+              </p>
+              <p className="whitespace-pre-wrap leading-7">
+                {problemState.problem.offlineTaskPreDescription}
+              </p>
+            </div>
+          )}
+
           {offlineError && (
             <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
               {offlineError}
@@ -743,13 +766,23 @@ export default function AlgorithmicsProblemIDEPage() {
     );
   }
 
-  if (languages === undefined || !problem) {
+  if (languages === undefined || scoreRecord === undefined || !problem) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-gray-400">Loading...</div>
       </div>
     );
   }
+
+  const bestScore = scoreRecord?.score ?? null;
+  const bestScoreClassName =
+    bestScore === null
+      ? "text-gray-500"
+      : bestScore >= problem.points
+        ? "text-green-400"
+        : bestScore > 0
+          ? "text-yellow-400"
+          : "text-gray-500";
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a]">
@@ -764,6 +797,13 @@ export default function AlgorithmicsProblemIDEPage() {
           <span className="text-gray-600">|</span>
           <span className="text-white font-medium">{problem.name}</span>
           <span className="text-gray-500 text-xs">{problem.points} pts</span>
+          <span className="text-gray-600">·</span>
+          <span className="text-xs text-gray-500">
+            Best:{" "}
+            <span className={`font-bold ${bestScoreClassName}`}>
+              {bestScore !== null ? `${formatScore(bestScore)}/${problem.points}` : "—"}
+            </span>
+          </span>
           {problem.isOffline && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase tracking-wide">
               Offline Active
@@ -798,6 +838,37 @@ export default function AlgorithmicsProblemIDEPage() {
           </button>
         </div>
       </div>
+
+      {problem.leaderboardVisible && (
+        <div className="flex items-center gap-2 border-b border-gray-800 bg-[#0a0a0a] px-4 pt-3">
+          <button
+            onClick={() => setActiveTab("workspace")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "workspace"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Workspace
+          </button>
+          <button
+            onClick={() => setActiveTab("leaderboard")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "leaderboard"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Leaderboard
+          </button>
+        </div>
+      )}
+
+      {problem.leaderboardVisible && activeTab === "leaderboard" ? (
+        <div className="flex-1 overflow-auto p-8">
+          <ProblemLeaderboardPanel trackSlug={track.id} problemSlug={problemId} />
+        </div>
+      ) : (
 
       <div className="flex-1 flex overflow-hidden">
         <div className="w-80 border-r border-gray-800 overflow-auto p-4">
@@ -869,6 +940,7 @@ export default function AlgorithmicsProblemIDEPage() {
           />
         </div>
       </div>
+      )}
     </div>
   );
 }

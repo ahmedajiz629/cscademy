@@ -10,7 +10,11 @@
 
 import type * as auth from "../auth.js";
 import type * as csacademyAccounts from "../csacademyAccounts.js";
+import type * as leaderboards from "../leaderboards.js";
+import type * as notificationHelpers from "../notificationHelpers.js";
+import type * as notifications from "../notifications.js";
 import type * as offlineProblemSessions from "../offlineProblemSessions.js";
+import type * as platformSettings from "../platformSettings.js";
 import type * as programmingLanguages from "../programmingLanguages.js";
 import type * as scores from "../scores.js";
 import type * as trackProblems from "../trackProblems.js";
@@ -27,7 +31,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   csacademyAccounts: typeof csacademyAccounts;
+  leaderboards: typeof leaderboards;
+  notificationHelpers: typeof notificationHelpers;
+  notifications: typeof notifications;
   offlineProblemSessions: typeof offlineProblemSessions;
+  platformSettings: typeof platformSettings;
   programmingLanguages: typeof programmingLanguages;
   scores: typeof scores;
   trackProblems: typeof trackProblems;
