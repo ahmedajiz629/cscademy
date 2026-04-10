@@ -23,19 +23,32 @@ function getRequiredEnv(name: "CONVEX_AUTH_JWKS" | "CONVEX_AUTH_PRIVATE_KEY") {
   return value;
 }
 
+function normalizeJwksValue(rawJwks: string) {
+  const trimmed = rawJwks.trim();
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return typeof parsed === "string" ? parsed : trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 function decodeJwksJson() {
   const rawJwks = getRequiredEnv("CONVEX_AUTH_JWKS");
 
   if (!rawJwks.startsWith("data:")) {
-    return rawJwks;
+    return normalizeJwksValue(rawJwks);
   }
 
   const [, encoded = ""] = rawJwks.split(",", 2);
   const isBase64 = rawJwks.includes(";base64,");
 
-  return isBase64
+  return normalizeJwksValue(
+    isBase64
     ? Buffer.from(encoded, "base64").toString("utf8")
-    : decodeURIComponent(encoded);
+    : decodeURIComponent(encoded)
+  );
 }
 
 function getKeyId() {

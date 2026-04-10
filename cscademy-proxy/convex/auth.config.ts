@@ -14,8 +14,23 @@ function getRequiredEnv(name: "CONVEX_AUTH_JWKS") {
   return value;
 }
 
+function normalizeJwksValue(rawJwks: string) {
+  const trimmed = rawJwks.trim();
+
+  if (trimmed.startsWith("data:")) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return typeof parsed === "string" ? parsed : trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 function getJwks() {
-  const rawJwks = getRequiredEnv("CONVEX_AUTH_JWKS");
+  const rawJwks = normalizeJwksValue(getRequiredEnv("CONVEX_AUTH_JWKS"));
 
   if (rawJwks.startsWith("data:")) {
     return rawJwks;
