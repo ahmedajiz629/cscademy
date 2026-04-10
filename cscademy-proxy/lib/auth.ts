@@ -52,6 +52,52 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
   }
 }
 
+function getProtocolFromUrlLike(rawValue: string | null): string | null {
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const protocol = new URL(rawValue).protocol;
+    if (protocol === "http:" || protocol === "https:") {
+      return protocol;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function getForwardedProtocol(req: NextRequest): string | null {
+  const forwarded = req.headers.get("forwarded");
+  const forwardedProtoMatch = forwarded?.match(/proto=([^;,"]+|"[^"]+")/i);
+  if (forwardedProtoMatch) {
+    return forwardedProtoMatch[1].replace(/^"|"$/g, "").toLowerCase();
+  }
+
+  return req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase() ?? null;
+}
+
+export function isSecureBrowserRequest(req: NextRequest): boolean {
+  const originProtocol = getProtocolFromUrlLike(req.headers.get("origin"));
+  if (originProtocol) {
+    return originProtocol === "https:";
+  }
+
+  const refererProtocol = getProtocolFromUrlLike(req.headers.get("referer"));
+  if (refererProtocol) {
+    return refererProtocol === "https:";
+  }
+
+  const forwardedProtocol = getForwardedProtocol(req);
+  if (forwardedProtocol === "https" || forwardedProtocol === "http") {
+    return forwardedProtocol === "https";
+  }
+
+  return req.nextUrl.protocol === "https:";
+}
+
 // ── Request helpers ───────────────────────────────────────────
 
 export async function getAuthUser(

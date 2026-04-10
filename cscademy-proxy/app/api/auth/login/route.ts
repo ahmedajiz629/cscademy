@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyPassword, createToken } from "@/lib/auth";
+import { verifyPassword, createToken, isSecureBrowserRequest } from "@/lib/auth";
 import { getConvexServiceClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 
 export async function POST(req: NextRequest) {
   try {
-    const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-    const isSecureRequest =
-      forwardedProto === "https" || req.nextUrl.protocol === "https:";
+    const isSecureRequest = isSecureBrowserRequest(req);
 
     const { email, password } = await req.json();
     if (!email || !password) {
