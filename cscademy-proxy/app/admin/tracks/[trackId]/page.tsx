@@ -82,21 +82,24 @@ export default function AdminTrackDetailPage() {
   const isLogicReverseEngineeringTrack =
     trackId === "logic-reverse-engineering";
   const isCtfTrack = trackId === "ctf";
+  const isAlgorithmicsTrack = trackId === "algorithmics";
+  const isAlgorithmicsImportMode = isAlgorithmicsTrack && mode === "add";
   const canAddProblem =
     !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
-  const isFormValid =
-    !!form.name.trim() &&
-    !!form.description.trim() &&
-    (mode !== "add" || !!form.slug.trim()) &&
-    (!isSoftwareEngineeringTrack ||
-      (!!form.publicRepositoryUrl.trim() &&
-        !!form.evaluationImage.trim() &&
-        !!form.baseCommit.trim())) &&
-    (!isLogicReverseEngineeringTrack ||
-      (!!form.judgeFilePath.trim() &&
-        !!form.evaluationImage.trim() &&
-        !!form.evaluationCommand.trim())) &&
-    (!isCtfTrack || mode === "edit" || !!form.flag.trim());
+  const isFormValid = isAlgorithmicsImportMode
+    ? !!form.contestTaskId.trim()
+    : !!form.name.trim() &&
+      !!form.description.trim() &&
+      (mode !== "add" || !!form.slug.trim()) &&
+      (!isSoftwareEngineeringTrack ||
+        (!!form.publicRepositoryUrl.trim() &&
+          !!form.evaluationImage.trim() &&
+          !!form.baseCommit.trim())) &&
+      (!isLogicReverseEngineeringTrack ||
+        (!!form.judgeFilePath.trim() &&
+          !!form.evaluationImage.trim() &&
+          !!form.evaluationCommand.trim())) &&
+      (!isCtfTrack || mode === "edit" || !!form.flag.trim());
 
   const isActive = settings !== undefined
     ? (settings?.isActive ?? (track?.isActive ?? true))
@@ -154,6 +157,25 @@ export default function AdminTrackDetailPage() {
   async function handleSave() {
     setSaving(true);
     try {
+      if (isAlgorithmicsImportMode) {
+        const response = await fetch("/api/admin/algorithmics/problems", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contestTaskId: Number(form.contestTaskId),
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || "Failed to import CSAcademy problem.");
+        }
+
+        setMode("view");
+        setEditingId(null);
+        return;
+      }
+
       const contestTaskId =
         !isSoftwareEngineeringTrack &&
         !isLogicReverseEngineeringTrack &&
@@ -396,7 +418,7 @@ export default function AdminTrackDetailPage() {
             onClick={startAdd}
             className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
-            + Add Problem
+            {isAlgorithmicsTrack ? "+ Import From CSAcademy" : "+ Add Problem"}
           </button>
         )}
       </div>
@@ -410,10 +432,14 @@ export default function AdminTrackDetailPage() {
       {(mode === "add" || mode === "edit") && (
         <div className="mb-6 p-5 bg-[#111127] border border-blue-500/30 rounded-xl">
           <h3 className="text-sm font-semibold text-blue-400 mb-4">
-            {mode === "add" ? "New Problem" : "Edit Problem"}
+            {mode === "add"
+              ? isAlgorithmicsTrack
+                ? "Import Algorithmics Problem"
+                : "New Problem"
+              : "Edit Problem"}
           </h3>
           <div className="grid grid-cols-2 gap-4">
-            {mode === "add" && (
+            {mode === "add" && !isAlgorithmicsTrack && (
               <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs text-gray-400 mb-1">Slug (URL-safe, unique)</label>
                 <input
@@ -424,61 +450,83 @@ export default function AdminTrackDetailPage() {
                 />
               </div>
             )}
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Name</label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="Problem Name"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Points</label>
-              <input
-                type="number"
-                value={form.points}
-                onChange={(e) => setForm({ ...form, points: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Order</label>
-              <input
-                type="number"
-                value={form.order}
-                onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
-                  form.isOffline
-                    ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
-                    : "bg-gray-800 border-gray-700 text-gray-200"
-                }`}
-              >
-                <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
-                <span className="text-xs uppercase tracking-wide">
-                  {form.isOffline ? "Offline" : "Online"}
-                </span>
-              </button>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs text-gray-400 mb-1">Description</label>
-              <textarea
-                rows={6}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
-                placeholder="Problem statement…"
-              />
-            </div>
-            {isSoftwareEngineeringTrack ? (
+            {!isAlgorithmicsImportMode && (
+              <>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Name</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Problem Name"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Points</label>
+                  <input
+                    type="number"
+                    value={form.points}
+                    onChange={(e) => setForm({ ...form, points: Number(e.target.value) })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Order</label>
+                  <input
+                    type="number"
+                    value={form.order}
+                    onChange={(e) => setForm({ ...form, order: Number(e.target.value) })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">Delivery Mode</label>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isOffline: !form.isOffline })}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg transition-colors ${
+                      form.isOffline
+                        ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+                        : "bg-gray-800 border-gray-700 text-gray-200"
+                    }`}
+                  >
+                    <span>{form.isOffline ? "Offline / LAN gated" : "Regular online"}</span>
+                    <span className="text-xs uppercase tracking-wide">
+                      {form.isOffline ? "Offline" : "Online"}
+                    </span>
+                  </button>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Description</label>
+                  <textarea
+                    rows={6}
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y font-mono"
+                    placeholder="Problem statement…"
+                  />
+                </div>
+              </>
+            )}
+            {isAlgorithmicsImportMode ? (
+              <>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-400 mb-1">CSAcademy Task ID</label>
+                  <input
+                    type="number"
+                    value={form.contestTaskId}
+                    onChange={(e) => setForm({ ...form, contestTaskId: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="e.g. 51724"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-500">
+                    The importer fetches the CSAcademy statement, samples, points, task URL, and default starter templates automatically. Order is assigned to the end of the current algorithmics list.
+                  </p>
+                </div>
+              </>
+            ) : isSoftwareEngineeringTrack ? (
               <>
                 <div className="col-span-2">
                   <label className="block text-xs text-gray-400 mb-1">Public Repository URL</label>
@@ -656,7 +704,13 @@ export default function AdminTrackDetailPage() {
               disabled={saving || !isFormValid}
               className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
             >
-              {saving ? "Saving…" : mode === "add" ? "Create Problem" : "Save Changes"}
+              {saving
+                ? "Saving…"
+                : mode === "add"
+                  ? isAlgorithmicsTrack
+                    ? "Import Problem"
+                    : "Create Problem"
+                  : "Save Changes"}
             </button>
             <button
               onClick={cancelForm}
