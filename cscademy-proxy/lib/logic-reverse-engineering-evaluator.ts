@@ -54,6 +54,32 @@ interface JudgeSourceDescriptor {
   isRemote: boolean;
 }
 
+function shellEscape(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function buildExecutionScript({
+  command,
+  judgeFilePath,
+  submissionFilePath,
+  judgeSource,
+}: {
+  command: string;
+  judgeFilePath: string;
+  submissionFilePath: string;
+  judgeSource: string;
+}): string {
+  return [
+    `export LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${shellEscape(judgeFilePath)}`,
+    `export LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE=${shellEscape(submissionFilePath)}`,
+    `export LOGIC_REVERSE_ENGINEERING_JUDGE_SOURCE=${shellEscape(judgeSource)}`,
+    `export JUDGE_FILE=${shellEscape(judgeFilePath)}`,
+    `export SUBMISSION_FILE=${shellEscape(submissionFilePath)}`,
+    `export JUDGE_SOURCE=${shellEscape(judgeSource)}`,
+    command,
+  ].join("; ");
+}
+
 function truncateLogs(logs: string): string {
   if (logs.length <= MAX_LOG_CHARS) {
     return logs;
@@ -469,6 +495,15 @@ export async function runLogicReverseEngineeringEvaluation(
 
     await Promise.all(copyOperations);
 
+    const containerJudgeFilePath = `${CONTAINER_WORKDIR}/${workspace.judgeFileName}`;
+    const containerSubmissionFilePath = `${CONTAINER_WORKDIR}/${SUBMISSION_FILE_NAME}`;
+    const executionScript = buildExecutionScript({
+      command,
+      judgeFilePath: containerJudgeFilePath,
+      submissionFilePath: containerSubmissionFilePath,
+      judgeSource: workspace.judgeFilePath,
+    });
+
     const execResult = await runCommand(
       dockerBin,
       [
@@ -477,15 +512,21 @@ export async function runLogicReverseEngineeringEvaluation(
         "-w",
         CONTAINER_WORKDIR,
         "-e",
-        `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${CONTAINER_WORKDIR}/${workspace.judgeFileName}`,
+        `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${containerJudgeFilePath}`,
         "-e",
-        `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE=${CONTAINER_WORKDIR}/${SUBMISSION_FILE_NAME}`,
+        `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE=${containerSubmissionFilePath}`,
         "-e",
         `LOGIC_REVERSE_ENGINEERING_JUDGE_SOURCE=${workspace.judgeFilePath}`,
+        "-e",
+        `JUDGE_FILE=${containerJudgeFilePath}`,
+        "-e",
+        `SUBMISSION_FILE=${containerSubmissionFilePath}`,
+        "-e",
+        `JUDGE_SOURCE=${workspace.judgeFilePath}`,
         containerId,
         "sh",
         "-lc",
-        command,
+        executionScript,
       ],
       {
         env: process.env,
