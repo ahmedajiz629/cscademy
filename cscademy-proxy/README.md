@@ -47,7 +47,6 @@ App env (`.env.local` for local development, `.env.server` for the deployed app)
 - `JWT_SECRET`
 - `OFFLINE_GATEWAY_SECRET`
 - `OFFLINE_GATEWAY_PORT`
-- `CTF_FLAG_ENCRYPTION_KEY`
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 - `CSACADEMY_EMAIL`
 - `CSACADEMY_PASSWORD`
@@ -74,6 +73,8 @@ the port.
 The Convex auth algorithm, issuer, and audience are fixed in code. Only `CONVEX_AUTH_JWKS` must also be set in the linked Convex deployment environment because [convex/auth.config.ts](convex/auth.config.ts) reads it directly.
 
 Docker must also be installed on the server for software engineering and logic/reverse-engineering evaluations.
+
+CTF flags are stored as salted one-way hashes on the server and must be re-entered once if they were created before the hash-based format.
 
 For logic and reverse engineering problems, the Docker image and evaluation command live in the per-problem configuration or seeded problem data, not in environment variables.
 

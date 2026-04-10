@@ -3,7 +3,7 @@ import { getAuthUser } from "@/lib/auth";
 import { getConvexUserClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { encryptCtfFlag } from "@/lib/ctf-flag-crypto";
+import { hashCtfFlag } from "@/lib/ctf-flag-hash";
 
 export async function PATCH(
   req: NextRequest,
@@ -30,7 +30,7 @@ export async function PATCH(
         order: Number(body.order),
         downloadableFilePath: String(body.downloadableFilePath ?? "").trim(),
         externalLink: String(body.externalLink ?? "").trim(),
-        encryptedFlag: rawFlag ? encryptCtfFlag(rawFlag) : undefined,
+        flagHash: rawFlag ? hashCtfFlag(rawFlag) : undefined,
         isOffline: Boolean(body.isOffline),
       }
     );

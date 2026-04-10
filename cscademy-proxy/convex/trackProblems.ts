@@ -193,15 +193,15 @@ async function upsertCtfConfig(
   fields: {
     downloadableFilePath?: string;
     externalLink?: string;
-    encryptedFlag?: string;
+    flagHash?: string;
   }
 ) {
   const existingConfig = await getCtfConfigByProblemId(ctx, problemId);
-  const normalizedEncryptedFlag = fields.encryptedFlag?.trim();
+  const normalizedFlagHash = fields.flagHash?.trim();
   const cleanConfig = cleanFields({
     downloadableFilePath: fields.downloadableFilePath,
     externalLink: fields.externalLink,
-    encryptedFlag: normalizedEncryptedFlag,
+    flagHash: normalizedFlagHash,
   });
 
   if (existingConfig) {
@@ -211,14 +211,14 @@ async function upsertCtfConfig(
     return;
   }
 
-  if (!normalizedEncryptedFlag) {
-    throw new Error("CTF encrypted flag is required.");
+  if (!normalizedFlagHash) {
+    throw new Error("CTF flag hash is required.");
   }
 
   await ctx.db.insert("ctfProblemConfigs", {
     problemId,
     ...cleanConfig,
-    encryptedFlag: normalizedEncryptedFlag,
+    flagHash: normalizedFlagHash,
   });
 }
 
@@ -405,7 +405,8 @@ export const getCtfValidationData = query({
 
     return {
       points: problem.points,
-      encryptedFlag: config?.encryptedFlag,
+      flagHash: config?.flagHash,
+      hasLegacyEncryptedFlag: Boolean(config?.encryptedFlag?.trim()),
     };
   },
 });
@@ -443,7 +444,7 @@ export const create = mutation({
     starterSubmission: v.optional(v.string()),
     downloadableFilePath: v.optional(v.string()),
     externalLink: v.optional(v.string()),
-    encryptedFlag: v.optional(v.string()),
+    flagHash: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -466,8 +467,8 @@ export const create = mutation({
       assertLogicReverseEngineeringConfig(args);
     }
 
-    if (args.trackSlug === "ctf" && !args.encryptedFlag?.trim()) {
-      throw new Error("CTF encrypted flag is required.");
+    if (args.trackSlug === "ctf" && !args.flagHash?.trim()) {
+      throw new Error("CTF flag hash is required.");
     }
 
     const problemId = await ctx.db.insert("trackProblems", {
@@ -512,7 +513,7 @@ export const create = mutation({
       await upsertCtfConfig(ctx, problemId, {
         downloadableFilePath: args.downloadableFilePath,
         externalLink: args.externalLink,
-        encryptedFlag: args.encryptedFlag,
+        flagHash: args.flagHash,
       });
     }
 
@@ -541,7 +542,7 @@ export const update = mutation({
     starterSubmission: v.optional(v.string()),
     downloadableFilePath: v.optional(v.string()),
     externalLink: v.optional(v.string()),
-    encryptedFlag: v.optional(v.string()),
+    flagHash: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
@@ -606,7 +607,7 @@ export const update = mutation({
       await upsertCtfConfig(ctx, id, {
         downloadableFilePath: fields.downloadableFilePath,
         externalLink: fields.externalLink,
-        encryptedFlag: fields.encryptedFlag,
+        flagHash: fields.flagHash,
       });
     }
   },

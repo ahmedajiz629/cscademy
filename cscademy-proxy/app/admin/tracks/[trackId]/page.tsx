@@ -604,7 +604,7 @@ export default function AdminTrackDetailPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-xs text-gray-500">
-                    File and link are optional. The flag is required for new problems, encrypted on the server, and never returned to the browser. Leave it blank while editing to keep the existing flag.
+                    File and link are optional. The flag is required for new problems, hashed on the server, and never returned to the browser. Leave it blank while editing to keep the existing hash.
                   </p>
                 </div>
               </>

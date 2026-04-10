@@ -4,7 +4,7 @@ import { getConvexServiceClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getTrackAccess } from "@/lib/tracks/access";
-import { decryptCtfFlag } from "@/lib/ctf-flag-crypto";
+import { verifyCtfFlag } from "@/lib/ctf-flag-hash";
 
 export const dynamic = "force-dynamic";
 
@@ -57,15 +57,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Problem not found" }, { status: 404 });
     }
 
-    if (!validationData.encryptedFlag?.trim()) {
+    if (!validationData.flagHash?.trim()) {
       return NextResponse.json(
-        { error: "This challenge is not configured yet." },
+        {
+          error: validationData.hasLegacyEncryptedFlag
+            ? "This challenge flag must be re-entered by an admin."
+            : "This challenge is not configured yet.",
+        },
         { status: 500 }
       );
     }
 
-    const expectedFlag = decryptCtfFlag(validationData.encryptedFlag).trim();
-    const passed = submittedFlag === expectedFlag;
+    const passed = verifyCtfFlag(submittedFlag, validationData.flagHash);
     const score = passed ? validationData.points : 0;
 
     await convex.mutation(

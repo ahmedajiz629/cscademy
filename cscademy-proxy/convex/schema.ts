@@ -68,7 +68,8 @@ export default defineSchema({
     problemId: v.id("trackProblems"),
     downloadableFilePath: v.optional(v.string()),
     externalLink: v.optional(v.string()),
-    encryptedFlag: v.string(),
+    flagHash: v.optional(v.string()),
+    encryptedFlag: v.optional(v.string()),
   }).index("by_problemId", ["problemId"]),
 
   // Per-student lifecycle for offline/LAN-gated problems

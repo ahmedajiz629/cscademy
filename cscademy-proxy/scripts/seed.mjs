@@ -264,28 +264,28 @@ arm`,
       trackSlug: "software-engineering",
       slug: "visitor",
       name: "Visitor Pattern Challenge",
-      description: `Clone the public starter repository, implement the required fixes, and make the test suite pass.
+      description: `Clone the public starter repository, read README.md to understand the task, complete the implementation, and make the test suite pass.
 
 Workflow
 1. Clone the public starter repository locally.
-2. Work on the task until the tests pass.
-3. Push your solution to a private GitHub repository.
-4. Create a fine-grained GitHub token with contents:read access to that repository.
-5. Submit the private repository URL, token, and the branch that contains your solution.
+2. Read README.md to understand the task and the expected constraints.
+3. Work on the task until the full test suite passes.
+4. Push your solution to a private GitHub repository.
+5. Create a fine-grained GitHub token with Contents: Read access to that repository.
+6. Submit the private repository URL, the branch name that contains your solution, and the token.
 
 Evaluation
-The platform runs a Docker challenge runner against your private branch with:
+The platform evaluates your submission by running the Docker image ajiztech/challenge-1 against the branch you submit, using values equivalent to:
 - REPO_URL=https://github.com/<user>/<repo>
-- SUBMISSION_REF=challenge
+- SUBMISSION_REF=<your-branch>
 - BASE_COMMIT=5ec858f
 - ACCESS_TOKEN=github_pat_<...>
-- image: ajiztech/challenge-1
 
 Result rules
-- {"status":"passed","tokenCount":4789,"score":13.20} means the score is 13.20
-- fatal: could not read Username for 'https://github.com': No such device or address means the token did not work
+- {"status":"passed","tokenCount":4789,"score":13.20} means all tests passed and the score is 13.20
+- fatal: could not read Username for 'https://github.com': No such device or address means the token was invalid, missing, or did not have access to the repository
 - fatal: couldn't find remote ref <branch> means the submitted branch does not exist
-- {"status":"failed","reason":"tests failed"} means evaluation completed but the tests did not pass`,
+- {"status":"failed","reason":"tests failed"} means evaluation completed, but the submitted solution did not pass the tests`,
       points: 100,
       order: 1,
       publicRepositoryUrl: "https://github.com/ajiz-org/software-engineering-challenge",
