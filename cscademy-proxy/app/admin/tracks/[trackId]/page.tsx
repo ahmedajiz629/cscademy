@@ -22,6 +22,7 @@ type Problem = {
   starterCode?: string;
   isActive?: boolean;
   isOffline?: boolean;
+  offlineTaskPreDescription?: string;
   publicRepositoryUrl?: string;
   evaluationImage?: string;
   evaluationCommand?: string;
@@ -55,6 +56,7 @@ const EMPTY_FORM = {
   externalLink: "",
   flag: "",
   isOffline: false,
+  offlineTaskPreDescription: "",
 };
 
 export default function AdminTrackDetailPage() {
@@ -144,6 +146,7 @@ export default function AdminTrackDetailPage() {
       externalLink: p.externalLink ?? "",
       flag: "",
       isOffline: p.isOffline ?? false,
+      offlineTaskPreDescription: p.offlineTaskPreDescription ?? "",
     });
     setEditingId(p._id);
     setMode("edit");
@@ -212,6 +215,9 @@ export default function AdminTrackDetailPage() {
         ? form.externalLink.trim() || ""
         : undefined;
       const flag = isCtfTrack ? form.flag.trim() || undefined : undefined;
+      const offlineTaskPreDescription = form.isOffline
+        ? form.offlineTaskPreDescription.trim()
+        : "";
 
       if (isCtfTrack) {
         const response = await fetch(
@@ -231,6 +237,7 @@ export default function AdminTrackDetailPage() {
               externalLink,
               flag,
               isOffline: form.isOffline,
+              offlineTaskPreDescription,
             }),
           }
         );
@@ -274,6 +281,7 @@ export default function AdminTrackDetailPage() {
           downloadableFilePath,
           externalLink,
           isOffline: form.isOffline,
+          offlineTaskPreDescription,
         });
       } else if (mode === "edit" && editingId) {
         await updateProblem({
@@ -303,6 +311,7 @@ export default function AdminTrackDetailPage() {
           downloadableFilePath,
           externalLink,
           isOffline: form.isOffline,
+          offlineTaskPreDescription,
         });
       }
       setMode("view");
@@ -496,6 +505,25 @@ export default function AdminTrackDetailPage() {
                     </span>
                   </button>
                 </div>
+                {form.isOffline && (
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">
+                      Offline Pre-Description
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={form.offlineTaskPreDescription}
+                      onChange={(e) =>
+                        setForm({ ...form, offlineTaskPreDescription: e.target.value })
+                      }
+                      className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+                      placeholder="Information the participant needs before heading to the offline room for this task."
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Shown on this task&apos;s offline confirmation screen only.
+                    </p>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <label className="block text-xs text-gray-400 mb-1">Description</label>
                   <textarea

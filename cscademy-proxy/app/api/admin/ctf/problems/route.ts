@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
       externalLink: String(body.externalLink ?? "").trim(),
       encryptedFlag: encryptCtfFlag(String(body.flag ?? "")),
       isOffline: Boolean(body.isOffline),
+      offlineTaskPreDescription: Boolean(body.isOffline)
+        ? String(body.offlineTaskPreDescription ?? "").trim()
+        : "",
     });
 
     return NextResponse.json({ problemId });

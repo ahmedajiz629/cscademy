@@ -31,6 +31,7 @@ export default defineSchema({
     order: v.number(),
     isActive: v.optional(v.boolean()), // undefined/true = active, false = disabled
     isOffline: v.optional(v.boolean()), // undefined/false = regular online task
+    offlineTaskPreDescription: v.optional(v.string()),
   })
     .index("by_trackSlug", ["trackSlug"])
     .index("by_trackSlug_slug", ["trackSlug", "slug"]),

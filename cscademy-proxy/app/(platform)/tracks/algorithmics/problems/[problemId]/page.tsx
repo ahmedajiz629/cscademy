@@ -39,6 +39,7 @@ interface ProblemDetails {
   sampleOutput?: string;
   starterCode?: string;
   isOffline?: boolean;
+  offlineTaskPreDescription?: string;
   probeImageUrl?: string;
 }
 
@@ -47,6 +48,7 @@ interface OfflineProblemPreview {
   name: string;
   points: number;
   isOffline: true;
+  offlineTaskPreDescription?: string;
 }
 
 interface User {
@@ -76,13 +78,16 @@ type ProblemAccessState =
   | { status: "ready"; problem: ProblemDetails };
 
 function toOfflineProblemPreview(
-  problem: Pick<ProblemDetails, "slug" | "name" | "points"> | OfflineProblemPreview
+  problem:
+    | Pick<ProblemDetails, "slug" | "name" | "points" | "offlineTaskPreDescription">
+    | OfflineProblemPreview
 ): OfflineProblemPreview {
   return {
     slug: problem.slug,
     name: problem.name,
     points: problem.points,
     isOffline: true,
+    offlineTaskPreDescription: problem.offlineTaskPreDescription,
   };
 }
 
@@ -717,6 +722,17 @@ export default function AlgorithmicsProblemIDEPage() {
               </>
             )}
           </div>
+
+          {!!problemState.problem.offlineTaskPreDescription?.trim() && (
+            <div className="mt-4 p-4 rounded-xl bg-[#0d0d1d] border border-gray-800 text-sm text-gray-200">
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-300 mb-2">
+                Before Heading To The Offline Room
+              </p>
+              <p className="whitespace-pre-wrap leading-7">
+                {problemState.problem.offlineTaskPreDescription}
+              </p>
+            </div>
+          )}
 
           {offlineError && (
             <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">

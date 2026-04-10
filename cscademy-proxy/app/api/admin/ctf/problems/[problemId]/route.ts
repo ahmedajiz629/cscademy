@@ -30,6 +30,9 @@ export async function PATCH(
       externalLink: String(body.externalLink ?? "").trim(),
       encryptedFlag: rawFlag ? encryptCtfFlag(rawFlag) : undefined,
       isOffline: Boolean(body.isOffline),
+      offlineTaskPreDescription: Boolean(body.isOffline)
+        ? String(body.offlineTaskPreDescription ?? "").trim()
+        : "",
     });
 
     return NextResponse.json({ ok: true });

@@ -242,6 +242,7 @@ async function mergeProblemWithConfig(
     downloadableFilePath: undefined as string | undefined,
     externalLink: undefined as string | undefined,
     isOffline: problem.isOffline ?? false,
+    offlineTaskPreDescription: problem.offlineTaskPreDescription,
   };
 
   if (problem.trackSlug === "algorithmics") {
@@ -430,6 +431,7 @@ export const create = mutation({
     externalLink: v.optional(v.string()),
     encryptedFlag: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
+    offlineTaskPreDescription: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.trackSlug === "software-engineering") {
@@ -457,6 +459,7 @@ export const create = mutation({
       points: args.points,
       order: args.order,
       isOffline: args.isOffline,
+      offlineTaskPreDescription: args.offlineTaskPreDescription,
     });
 
     if (args.trackSlug === "algorithmics") {
@@ -522,6 +525,7 @@ export const update = mutation({
     externalLink: v.optional(v.string()),
     encryptedFlag: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
+    offlineTaskPreDescription: v.optional(v.string()),
   },
   handler: async (ctx, { id, ...fields }) => {
     const problem = await ctx.db.get(id);
@@ -536,6 +540,7 @@ export const update = mutation({
       points: fields.points,
       order: fields.order,
       isOffline: fields.isOffline,
+      offlineTaskPreDescription: fields.offlineTaskPreDescription,
     });
 
     if (Object.keys(sharedFields).length > 0) {
