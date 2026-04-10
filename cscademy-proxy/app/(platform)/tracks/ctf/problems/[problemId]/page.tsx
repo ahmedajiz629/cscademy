@@ -161,6 +161,7 @@ export default function CtfProblemPage() {
   const hasDownload = !!downloadableFileHref;
   const hasExternalLink = !!externalLinkHref;
   const isExternalDownload = /^https?:\/\//i.test(downloadableFileHref);
+  const isBestScoreLoading = !!user?.id && scoreRecord === undefined;
   const bestScore = scoreRecord?.score ?? null;
   const attempts = scoreRecord?.attempts ?? 0;
   const solved = bestScore === problem.points;
@@ -224,7 +225,11 @@ export default function CtfProblemPage() {
                   Best Score
                 </p>
                 <p className="text-2xl font-bold text-white">
-                  {bestScore !== null ? formatScore(bestScore) : "—"}
+                  {isBestScoreLoading
+                    ? "Loading..."
+                    : bestScore !== null
+                      ? formatScore(bestScore)
+                      : "—"}
                 </p>
                 <p className="mt-1 text-xs text-gray-500">/{problem.points}</p>
               </div>

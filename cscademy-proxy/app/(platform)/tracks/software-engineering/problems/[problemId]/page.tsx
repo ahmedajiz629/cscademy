@@ -191,6 +191,7 @@ export default function SoftwareEngineeringProblemPage() {
     setSubmissionRef(problem.defaultSubmissionRef || "challenge");
   }, [problem, submissionRef]);
 
+  const isBestScoreLoading = !!user?.id && scoreRecord === undefined;
   const bestScore = scoreRecord?.score ?? null;
 
   async function evaluateSubmission() {
@@ -318,7 +319,11 @@ export default function SoftwareEngineeringProblemPage() {
                   Best Score
                 </p>
                 <p className="text-2xl font-bold text-white">
-                  {bestScore !== null ? formatScore(bestScore) : "—"}
+                  {isBestScoreLoading
+                    ? "Loading..."
+                    : bestScore !== null
+                      ? formatScore(bestScore)
+                      : "—"}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">/{problem.points}</p>
               </div>

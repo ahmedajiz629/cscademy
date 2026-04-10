@@ -202,6 +202,7 @@ export default function LogicReverseEngineeringProblemPage() {
     );
   }
 
+  const isBestScoreLoading = !!user?.id && scoreRecord === undefined;
   const bestScore = scoreRecord?.score ?? null;
   const judgeDownloadHref = normalizeJudgeDownloadHref(problem.judgeFilePath);
   const isExternalJudgeSource = /^https?:\/\//i.test(judgeDownloadHref);
@@ -265,7 +266,11 @@ export default function LogicReverseEngineeringProblemPage() {
                   Best Score
                 </p>
                 <p className="text-2xl font-bold text-white">
-                  {bestScore !== null ? formatScore(bestScore) : "—"}
+                  {isBestScoreLoading
+                    ? "Loading..."
+                    : bestScore !== null
+                      ? formatScore(bestScore)
+                      : "—"}
                 </p>
                 <p className="mt-1 text-xs text-gray-500">/{problem.points}</p>
               </div>
