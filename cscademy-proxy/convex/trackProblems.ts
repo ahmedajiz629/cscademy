@@ -333,6 +333,30 @@ export const listByTrackAdmin = query({
   },
 });
 
+export const listAllAdmin = query({
+  handler: async (ctx) => {
+    const problems = await ctx.db.query("trackProblems").collect();
+
+    const mergedProblems = await Promise.all(
+      problems.map((problem) =>
+        mergeProblemWithConfig(ctx, problem, { includeSecrets: true })
+      )
+    );
+
+    return mergedProblems.sort((left, right) => {
+      if (left.trackSlug !== right.trackSlug) {
+        return left.trackSlug.localeCompare(right.trackSlug);
+      }
+
+      if (left.order !== right.order) {
+        return left.order - right.order;
+      }
+
+      return left.name.localeCompare(right.name);
+    });
+  },
+});
+
 export const getBySlug = query({
   args: { trackSlug: v.string(), slug: v.string() },
   handler: async (ctx, { trackSlug, slug }) => {
