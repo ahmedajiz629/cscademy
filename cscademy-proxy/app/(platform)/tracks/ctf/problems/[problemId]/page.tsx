@@ -5,16 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/ctf";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
 
 interface ProblemDetails {
   slug: string;
@@ -53,8 +45,6 @@ function normalizeResourceHref(rawValue?: string): string {
 export default function CtfProblemPage() {
   const params = useParams();
   const problemId = params.problemId as string;
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [submittedFlag, setSubmittedFlag] = useState("");
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,38 +53,10 @@ export default function CtfProblemPage() {
     trackSlug: track.id,
     slug: problemId,
   }) as ProblemDetails | null | undefined;
-  const scoreRecord = useQuery(
-    api.scores.getByUserAndProblem,
-    user?.id
-      ? {
-          userId: user.id as Id<"users">,
-          trackSlug: track.id,
-          problemSlug: problemId,
-        }
-      : "skip"
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/auth/me")
-      .then((response) => response.json())
-      .then((data) => {
-        if (!cancelled) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setIsAuthResolved(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const scoreRecord = useQuery(api.scores.getMineByProblem, {
+    trackSlug: track.id,
+    problemSlug: problemId,
+  });
 
   useEffect(() => {
     setResult(null);
@@ -137,7 +99,7 @@ export default function CtfProblemPage() {
     }
   }
 
-  if (!isAuthResolved || problem === undefined) {
+  if (scoreRecord === undefined || problem === undefined) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#0a0a0a]">
         <div className="text-gray-400">Loading...</div>

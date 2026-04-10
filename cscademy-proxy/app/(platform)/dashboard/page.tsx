@@ -1,37 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import { formatScore } from "@/lib/score-format";
 import { getAllTracks } from "@/lib/tracks";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
 
 const allTracks = getAllTracks();
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => setUser(d.user))
-      .catch(() => {});
-  }, []);
+  const user = useQuery(api.users.viewer, {});
+  const scores = useQuery(api.scores.getMine, {});
 
   const trackSettings = useQuery(api.trackSettings.list);
-  const scores = useQuery(
-    api.scores.getAllByUser,
-    user?.id ? { userId: user.id as Id<"users"> } : "skip"
-  );
 
   // Resolve effective isActive: DB override → code default
   const tracks = allTracks.filter((t) => {

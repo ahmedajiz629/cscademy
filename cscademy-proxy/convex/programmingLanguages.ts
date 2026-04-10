@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAdminOrService } from "./auth";
 
 export const listByTrack = query({
   args: { trackSlug: v.string() },
@@ -21,6 +22,7 @@ export const create = mutation({
     order: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireAdminOrService(ctx);
     return ctx.db.insert("programmingLanguages", args);
   },
 });
@@ -28,6 +30,8 @@ export const create = mutation({
 export const clearByTrack = mutation({
   args: { trackSlug: v.string() },
   handler: async (ctx, { trackSlug }) => {
+    await requireAdminOrService(ctx);
+
     const langs = await ctx.db
       .query("programmingLanguages")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))

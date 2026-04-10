@@ -6,7 +6,6 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import OutputPanel from "@/components/OutputPanel";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/logic-reverse-engineering";
@@ -19,13 +18,6 @@ const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
     </div>
   ),
 });
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
 
 interface ProblemDetails {
   slug: string;
@@ -88,8 +80,6 @@ function buildOutputText(result: EvaluationResult): string {
 export default function LogicReverseEngineeringProblemPage() {
   const params = useParams();
   const problemId = params.problemId as string;
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [submission, setSubmission] = useState("");
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [output, setOutput] = useState("");
@@ -100,38 +90,10 @@ export default function LogicReverseEngineeringProblemPage() {
     trackSlug: track.id,
     slug: problemId,
   }) as ProblemDetails | null | undefined;
-  const scoreRecord = useQuery(
-    api.scores.getByUserAndProblem,
-    user?.id
-      ? {
-          userId: user.id as Id<"users">,
-          trackSlug: track.id,
-          problemSlug: problemId,
-        }
-      : "skip"
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/auth/me")
-      .then((response) => response.json())
-      .then((data) => {
-        if (!cancelled) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setIsAuthResolved(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const scoreRecord = useQuery(api.scores.getMineByProblem, {
+    trackSlug: track.id,
+    problemSlug: problemId,
+  });
 
   useEffect(() => {
     setResult(null);
@@ -183,7 +145,7 @@ export default function LogicReverseEngineeringProblemPage() {
     }
   }
 
-  if (!isAuthResolved || problem === undefined) {
+  if (scoreRecord === undefined || problem === undefined) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#0a0a0a]">
         <div className="text-gray-400">Loading...</div>

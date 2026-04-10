@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getConvexClient } from "@/lib/convex-server";
+import { getConvexUserClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { encryptCtfFlag } from "@/lib/ctf-flag-crypto";
 
@@ -12,20 +12,23 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const convex = getConvexClient();
+    const convex = await getConvexUserClient(auth);
 
-    const problemId = await convex.mutation(api.trackProblems.create, {
-      trackSlug: "ctf",
-      slug: String(body.slug ?? "").trim(),
-      name: String(body.name ?? "").trim(),
-      description: String(body.description ?? "").trim(),
-      points: Number(body.points),
-      order: Number(body.order),
-      downloadableFilePath: String(body.downloadableFilePath ?? "").trim(),
-      externalLink: String(body.externalLink ?? "").trim(),
-      encryptedFlag: encryptCtfFlag(String(body.flag ?? "")),
-      isOffline: Boolean(body.isOffline),
-    });
+    const problemId = await convex.mutation(
+      api.trackProblems.create,
+      {
+        trackSlug: "ctf",
+        slug: String(body.slug ?? "").trim(),
+        name: String(body.name ?? "").trim(),
+        description: String(body.description ?? "").trim(),
+        points: Number(body.points),
+        order: Number(body.order),
+        downloadableFilePath: String(body.downloadableFilePath ?? "").trim(),
+        externalLink: String(body.externalLink ?? "").trim(),
+        encryptedFlag: encryptCtfFlag(String(body.flag ?? "")),
+        isOffline: Boolean(body.isOffline),
+      }
+    );
 
     return NextResponse.json({ problemId });
   } catch (error: any) {

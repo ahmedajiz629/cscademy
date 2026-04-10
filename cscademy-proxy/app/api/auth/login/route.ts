@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyPassword, createToken } from "@/lib/auth";
-import { getConvexClient } from "@/lib/convex-server";
+import { getConvexServiceClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 
 export async function POST(req: NextRequest) {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const convex = getConvexClient();
+    const convex = await getConvexServiceClient("login");
     const user = await convex.query(api.users.getByEmail, { email });
 
     if (!user || !user.isActive) {

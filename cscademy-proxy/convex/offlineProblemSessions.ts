@@ -1,6 +1,12 @@
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
+import {
+  requireAdminOrService,
+  requireIdentity,
+  requireSelfOrAdminOrService,
+  requireService,
+} from "./auth";
 
 const DEFAULT_FLAG_REASON = "probe_match";
 const DEFAULT_TERMINATED_REASON = "connection_lost";
@@ -60,6 +66,49 @@ function buildSessionDocument(
   return nextSession;
 }
 
+async function requireViewerUserId(ctx: Parameters<typeof requireIdentity>[0]) {
+  const identity = await requireIdentity(ctx);
+
+  if (!identity.userId) {
+    throw new Error("Unauthorized");
+  }
+
+  return identity.userId;
+}
+
+export const getMineByUserAndProblem = query({
+  args: {
+    trackSlug: v.string(),
+    problemSlug: v.string(),
+  },
+  handler: async (ctx, { trackSlug, problemSlug }) => {
+    const userId = await requireViewerUserId(ctx);
+
+    return ctx.db
+      .query("offlineProblemSessions")
+      .withIndex("by_user_problem", (q) =>
+        q.eq("userId", userId).eq("trackSlug", trackSlug).eq("problemSlug", problemSlug)
+      )
+      .first();
+  },
+});
+
+export const listMineByTrack = query({
+  args: {
+    trackSlug: v.string(),
+  },
+  handler: async (ctx, { trackSlug }) => {
+    const userId = await requireViewerUserId(ctx);
+
+    return ctx.db
+      .query("offlineProblemSessions")
+      .withIndex("by_user_track", (q) =>
+        q.eq("userId", userId).eq("trackSlug", trackSlug)
+      )
+      .collect();
+  },
+});
+
 export const getByUserAndProblem = query({
   args: {
     userId: v.id("users"),
@@ -67,6 +116,8 @@ export const getByUserAndProblem = query({
     problemSlug: v.string(),
   },
   handler: async (ctx, { userId, trackSlug, problemSlug }) => {
+    await requireSelfOrAdminOrService(ctx, userId);
+
     return ctx.db
       .query("offlineProblemSessions")
       .withIndex("by_user_problem", (q) =>
@@ -82,6 +133,8 @@ export const listByUserAndTrack = query({
     trackSlug: v.string(),
   },
   handler: async (ctx, { userId, trackSlug }) => {
+    await requireSelfOrAdminOrService(ctx, userId);
+
     return ctx.db
       .query("offlineProblemSessions")
       .withIndex("by_user_track", (q) =>
@@ -92,7 +145,10 @@ export const listByUserAndTrack = query({
 });
 
 export const listAll = query({
+  args: {},
   handler: async (ctx) => {
+    await requireAdminOrService(ctx);
+
     const sessions = await ctx.db.query("offlineProblemSessions").collect();
     return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
   },
@@ -107,6 +163,8 @@ export const prepareEntry = mutation({
     gatewayUrl: v.string(),
   },
   handler: async (ctx, { userId, trackSlug, problemSlug, sessionId, gatewayUrl }) => {
+    await requireService(ctx);
+
     const now = Date.now();
     const existing = await ctx.db
       .query("offlineProblemSessions")
@@ -149,6 +207,8 @@ export const prepareEntry = mutation({
 export const activate = mutation({
   args: { sessionId: v.string() },
   handler: async (ctx, { sessionId }) => {
+    await requireService(ctx);
+
     const session = await ctx.db
       .query("offlineProblemSessions")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
@@ -177,6 +237,8 @@ export const activate = mutation({
 export const heartbeat = mutation({
   args: { sessionId: v.string() },
   handler: async (ctx, { sessionId }) => {
+    await requireService(ctx);
+
     const session = await ctx.db
       .query("offlineProblemSessions")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
@@ -202,6 +264,8 @@ export const terminate = mutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, { sessionId, reason }) => {
+    await requireService(ctx);
+
     const session = await ctx.db
       .query("offlineProblemSessions")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
@@ -235,6 +299,8 @@ export const flag = mutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, { sessionId, reason }) => {
+    await requireService(ctx);
+
     const session = await ctx.db
       .query("offlineProblemSessions")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
@@ -261,6 +327,8 @@ export const reopen = mutation({
     id: v.id("offlineProblemSessions"),
   },
   handler: async (ctx, { id }) => {
+    await requireAdminOrService(ctx);
+
     const session = await ctx.db.get(id);
 
     if (!session) {
@@ -290,6 +358,8 @@ export const setStatus = mutation({
     ),
   },
   handler: async (ctx, { id, status }) => {
+    await requireAdminOrService(ctx);
+
     const session = await ctx.db.get(id);
 
     if (!session) {
@@ -328,6 +398,8 @@ export const setIncident = mutation({
     incidentReason: v.string(),
   },
   handler: async (ctx, { id, incidentReason }) => {
+    await requireAdminOrService(ctx);
+
     const session = await ctx.db.get(id);
 
     if (!session) {

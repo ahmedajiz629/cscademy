@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAdminOrService } from "./auth";
 
 /** Get the DB-stored active override for a specific track (null = use code default) */
 export const getBySlug = query({
@@ -24,6 +25,8 @@ export const list = query({
 export const setActive = mutation({
   args: { trackSlug: v.string(), isActive: v.boolean() },
   handler: async (ctx, { trackSlug, isActive }) => {
+    await requireAdminOrService(ctx);
+
     const existing = await ctx.db
       .query("trackSettings")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))

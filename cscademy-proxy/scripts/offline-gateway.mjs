@@ -1,8 +1,12 @@
-import { ConvexHttpClient } from "convex/browser";
 import { jwtVerify } from "jose";
 import { WebSocketServer } from "ws";
+import {
+  ensureScriptEnvLoaded,
+  getConvexServiceClient,
+} from "./lib/convex-service-client.mjs";
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL;
+ensureScriptEnvLoaded();
+
 const GATEWAY_SECRET =
   process.env.OFFLINE_GATEWAY_SECRET || process.env.JWT_SECRET;
 const HOST = process.env.OFFLINE_GATEWAY_HOST || "0.0.0.0";
@@ -11,17 +15,13 @@ const ISSUER = "ajiz-tech-challenge";
 const AUDIENCE = "offline-gateway";
 const HEARTBEAT_INTERVAL_MS = 5000;
 
-if (!CONVEX_URL) {
-  throw new Error("NEXT_PUBLIC_CONVEX_URL must be set for the offline gateway.");
-}
-
 if (!GATEWAY_SECRET) {
   throw new Error(
     "OFFLINE_GATEWAY_SECRET or JWT_SECRET must be set for the offline gateway."
   );
 }
 
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = await getConvexServiceClient("offline-gateway");
 const secret = new TextEncoder().encode(GATEWAY_SECRET);
 const wss = new WebSocketServer({ host: HOST, port: PORT });
 

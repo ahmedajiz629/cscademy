@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getConvexClient } from "@/lib/convex-server";
+import { getConvexServiceClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getTrackAccess } from "@/lib/tracks/access";
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const convex = getConvexClient();
+    const convex = await getConvexServiceClient("logic-evaluation");
     const trackAccess = await getTrackAccess(convex, trackSlug);
     if (!trackAccess || !trackAccess.isVisible) {
       return NextResponse.json({ error: "Problem not found" }, { status: 404 });
@@ -70,12 +70,15 @@ export async function POST(req: NextRequest) {
 
     const score = result.status === "passed" ? problem.points : 0;
     if (result.status === "passed") {
-      await convex.mutation(api.scores.upsert, {
-        userId: auth.userId as Id<"users">,
-        trackSlug,
-        problemSlug,
-        score,
-      });
+      await convex.mutation(
+        api.scores.upsert,
+        {
+          userId: auth.userId as Id<"users">,
+          trackSlug,
+          problemSlug,
+          score,
+        }
+      );
     }
 
     return NextResponse.json({

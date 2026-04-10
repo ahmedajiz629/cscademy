@@ -1,31 +1,10 @@
-import { readFileSync } from "node:fs";
-import { ConvexHttpClient } from "convex/browser";
+import {
+  getConvexServiceClient,
+  getConvexUrl,
+} from "./lib/convex-service-client.mjs";
 
-function readEnvValue(name) {
-  if (process.env[name]) {
-    return process.env[name];
-  }
-
-  try {
-    const text = readFileSync(".env.local", "utf8");
-    const line = text
-      .split(/\r?\n/)
-      .find((entry) => entry.startsWith(`${name}=`));
-
-    if (!line) {
-      return undefined;
-    }
-
-    return line.slice(name.length + 1).trim().replace(/^"|"$/g, "");
-  } catch {
-    return undefined;
-  }
-}
-
-const CONVEX_URL =
-  readEnvValue("NEXT_PUBLIC_CONVEX_URL") || "http://127.0.0.1:3210";
-
-const client = new ConvexHttpClient(CONVEX_URL);
+const CONVEX_URL = getConvexUrl();
+const client = await getConvexServiceClient("seed-software-engineering");
 
 const problem = {
   trackSlug: "software-engineering",

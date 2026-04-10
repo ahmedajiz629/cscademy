@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getConvexClient } from "@/lib/convex-server";
+import { getConvexServiceClient } from "@/lib/convex-server";
 import { csaManager } from "@/lib/csacademy-manager";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -13,10 +13,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const convex = getConvexClient();
-    const csaAccount = await convex.query(api.csacademyAccounts.getByUserId, {
-      userId: auth.userId as Id<"users">,
-    });
+    const convex = await getConvexServiceClient("evaluation-run");
+    const csaAccount = await convex.query(
+      api.csacademyAccounts.getByUserId,
+      {
+        userId: auth.userId as Id<"users">,
+      }
+    );
     if (!csaAccount) {
       return NextResponse.json(
         { error: "No evaluation account linked. Contact your administrator." },

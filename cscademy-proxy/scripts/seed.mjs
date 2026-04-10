@@ -4,11 +4,14 @@
  *
  * Run with: node scripts/seed.mjs
  */
-import { ConvexHttpClient } from "convex/browser";
 import bcrypt from "bcryptjs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
+import {
+  getConvexServiceClient,
+  getConvexUrl,
+} from "./lib/convex-service-client.mjs";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -63,14 +66,11 @@ function loadEnvFile(filePath) {
 loadEnvFile(resolve(PROJECT_ROOT, ".env"));
 loadEnvFile(resolve(PROJECT_ROOT, ".env.local"));
 
-const CONVEX_URL =
-  process.env.CONVEX_URL ||
-  process.env.NEXT_PUBLIC_CONVEX_URL ||
-  "http://127.0.0.1:3210";
+const CONVEX_URL = getConvexUrl();
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-const client = new ConvexHttpClient(CONVEX_URL);
+const client = await getConvexServiceClient("seed");
 
 // ── CSAcademy language fetcher ─────────────────────────────────
 
@@ -290,7 +290,7 @@ Result rules
       order: 1,
       publicRepositoryUrl: "https://github.com/ajiz-org/software-engineering-challenge",
       evaluationImage: "ajiztech/challenge-1",
-      baseCommit: "fe8afb3ab6564b1af14b8c1a80e78bd3668868be",
+      baseCommit: "9a008418a3e56b9d214c4e64815f6155380f2378",
       defaultSubmissionRef: "main",
     },
     {

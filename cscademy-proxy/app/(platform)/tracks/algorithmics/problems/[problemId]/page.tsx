@@ -6,7 +6,6 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import track from "@/lib/tracks/algorithmics";
 import { formatScore } from "@/lib/score-format";
 import {
@@ -49,13 +48,6 @@ interface OfflineProblemPreview {
   isOffline: true;
 }
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
-
 interface OfflineRuntimeConfig {
   probeImageUrl: string | null;
 }
@@ -90,8 +82,6 @@ export default function AlgorithmicsProblemIDEPage() {
   const params = useParams();
   const trackId = track.id;
   const problemId = params.problemId as string;
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState<OfflineRuntimeConfig | null>(null);
 
   const languages = useQuery(api.programmingLanguages.listByTrack, {
@@ -101,16 +91,10 @@ export default function AlgorithmicsProblemIDEPage() {
     trackSlug: trackId,
     slug: problemId,
   });
-  const session = useQuery(
-    api.offlineProblemSessions.getByUserAndProblem,
-    user?.id
-      ? {
-          userId: user.id as Id<"users">,
-          trackSlug: trackId,
-          problemSlug: problemId,
-        }
-      : "skip"
-  );
+  const session = useQuery(api.offlineProblemSessions.getMineByUserAndProblem, {
+    trackSlug: trackId,
+    problemSlug: problemId,
+  });
 
   const [langId, setLangId] = useState("");
   const [code, setCode] = useState("");
@@ -150,28 +134,6 @@ export default function AlgorithmicsProblemIDEPage() {
       probeImageRef.current.onerror = null;
       probeImageRef.current = null;
     }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) {
-          setUser(d.user);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setIsAuthResolved(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
@@ -236,7 +198,7 @@ export default function AlgorithmicsProblemIDEPage() {
   }, [clearProbeRequest]);
 
   const problemState = useMemo<ProblemAccessState>(() => {
-    if (!isAuthResolved || problemRecord === undefined) {
+    if (problemRecord === undefined) {
       return { status: "loading" };
     }
 
@@ -248,7 +210,7 @@ export default function AlgorithmicsProblemIDEPage() {
       return { status: "ready", problem: problemRecord };
     }
 
-    if (!user || session === undefined) {
+    if (session === undefined) {
       return { status: "loading" };
     }
 
@@ -288,13 +250,11 @@ export default function AlgorithmicsProblemIDEPage() {
           : false,
     };
   }, [
-    isAuthResolved,
     now,
     optimisticClosedState,
     problemRecord,
     runtimeConfig,
     session,
-    user,
   ]);
 
   const problem = problemState.status === "ready" ? problemState.problem : null;

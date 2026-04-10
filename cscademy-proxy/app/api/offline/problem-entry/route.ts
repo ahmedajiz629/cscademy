@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getConvexClient } from "@/lib/convex-server";
+import { getConvexServiceClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = auth.userId as Id<"users">;
-  const convex = getConvexClient();
+  const convex = await getConvexServiceClient("offline-problem-entry");
   const access = await getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug);
 
   if (!access.problem) {
@@ -70,13 +70,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  await convex.mutation(api.offlineProblemSessions.prepareEntry, {
-    userId,
-    trackSlug,
-    problemSlug,
-    sessionId,
-    gatewayUrl,
-  });
+  await convex.mutation(
+    api.offlineProblemSessions.prepareEntry,
+    {
+      userId,
+      trackSlug,
+      problemSlug,
+      sessionId,
+      gatewayUrl,
+    }
+  );
 
   const token = await createOfflineGatewayToken({
     userId: auth.userId,

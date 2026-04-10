@@ -80,8 +80,8 @@ function getSessionIncidentValue(session: {
 }
 
 export default function AdminUsersPage() {
-  const users = useQuery(api.users.list);
-  const offlineSessions = useQuery(api.offlineProblemSessions.listAll);
+  const users = useQuery(api.users.list, {});
+  const offlineSessions = useQuery(api.offlineProblemSessions.listAll, {});
   const createUser = useMutation(api.users.create);
   const updateUser = useMutation(api.users.update);
   const removeUser = useMutation(api.users.remove);
@@ -147,46 +147,28 @@ export default function AdminUsersPage() {
 
       if (editingId) {
         userId = editingId;
-        const updates: any = {
+        await updateUser({
           id: userId,
           name: trimmedName,
           email: trimmedEmail,
           role: form.role,
-        };
-        if (form.password) {
-          // Hash password on server
-          const hashRes = await fetch("/api/admin/hash-password", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ password: form.password }),
-          });
-          const hashData = await hashRes.json();
-          updates.passwordHash = hashData.hash;
-        }
-        await updateUser(updates);
+          password: form.password || undefined,
+        });
       } else {
         if (!form.password) {
           setError("Password is required for new users");
           setSaving(false);
           return;
         }
-        // Hash password on server
-        const hashRes = await fetch("/api/admin/hash-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: form.password }),
-        });
-        const hashData = await hashRes.json();
 
         userId = await createUser({
           name: trimmedName,
           email: trimmedEmail,
-          passwordHash: hashData.hash,
+          password: form.password,
           role: form.role,
         });
       }
 
-      // Handle CSA account
       if (form.csaEmail && form.csaPassword) {
         await upsertCsa({
           userId,

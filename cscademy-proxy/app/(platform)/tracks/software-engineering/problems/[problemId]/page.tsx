@@ -5,17 +5,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import OutputPanel from "@/components/OutputPanel";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/software-engineering";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
 
 interface EvaluationResult {
   status: "passed" | "failed";
@@ -125,8 +117,6 @@ function buildOutputText(
 export default function SoftwareEngineeringProblemPage() {
   const params = useParams();
   const problemId = params.problemId as string;
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [submissionRef, setSubmissionRef] = useState("");
@@ -139,38 +129,10 @@ export default function SoftwareEngineeringProblemPage() {
     trackSlug: track.id,
     slug: problemId,
   });
-  const scoreRecord = useQuery(
-    api.scores.getByUserAndProblem,
-    user?.id
-      ? {
-          userId: user.id as Id<"users">,
-          trackSlug: track.id,
-          problemSlug: problemId,
-        }
-      : "skip"
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) {
-          setUser(data.user);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setIsAuthResolved(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const scoreRecord = useQuery(api.scores.getMineByProblem, {
+    trackSlug: track.id,
+    problemSlug: problemId,
+  });
 
   useEffect(() => {
     setRepoUrl("");
@@ -231,7 +193,7 @@ export default function SoftwareEngineeringProblemPage() {
     }
   }
 
-  if (!isAuthResolved || problem === undefined) {
+  if (scoreRecord === undefined || problem === undefined) {
     return (
       <div className="h-screen flex items-center justify-center bg-[#0a0a0a]">
         <div className="text-gray-400">Loading...</div>

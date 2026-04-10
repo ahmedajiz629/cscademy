@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { useConvexAuth, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
+import { api } from "@/convex/_generated/api";
 
 export default function AdminLayout({
   children,
@@ -18,24 +13,30 @@ export default function AdminLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<User | null>(null);
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const user = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.user?.role !== "admin") router.push("/dashboard");
-        else setUser(d.user);
-      })
-      .catch(() => router.push("/login"));
-  }, [router]);
+    if (isLoading || user === undefined) {
+      return;
+    }
+
+    if (!isAuthenticated || !user) {
+      router.push("/login");
+      return;
+    }
+
+    if (user.role !== "admin") {
+      router.push("/dashboard");
+    }
+  }, [isAuthenticated, isLoading, router, user]);
 
   const handleLogout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
   }, [router]);
 
-  if (!user) {
+  if (isLoading || user === undefined || !user || user.role !== "admin") {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <div className="text-gray-400">Loading...</div>

@@ -5,17 +5,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
 import { formatScore } from "@/lib/score-format";
 import { getTrack } from "@/lib/tracks";
 import { isOfflineSessionStale } from "@/lib/offline-session";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
 
 interface TrackProblemListItem {
   slug: string;
@@ -28,24 +20,14 @@ interface TrackProblemListItem {
 export default function TrackDetailPage() {
   const params = useParams();
   const trackId = params.trackId as string;
-  const [user, setUser] = useState<User | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const track = getTrack(trackId);
   const problems = useQuery(api.trackProblems.listByTrack, { trackSlug: trackId });
-  const sessions = useQuery(
-    api.offlineProblemSessions.listByUserAndTrack,
-    user?.id
-      ? { userId: user.id as Id<"users">, trackSlug: trackId }
-      : "skip"
-  );
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => setUser(d.user))
-      .catch(() => {});
-  }, []);
+  const sessions = useQuery(api.offlineProblemSessions.listMineByTrack, {
+    trackSlug: trackId,
+  });
+  const scores = useQuery(api.scores.getMineByTrack, { trackSlug: trackId });
 
   useEffect(() => {
     if (!(sessions || []).some((session) => session.status === "active")) {
@@ -56,13 +38,6 @@ export default function TrackDetailPage() {
     const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
   }, [sessions]);
-
-  const scores = useQuery(
-    api.scores.getByUserAndTrack,
-    user?.id
-      ? { userId: user.id as Id<"users">, trackSlug: trackId }
-      : "skip"
-  );
 
   const problemsList = useMemo<TrackProblemListItem[] | null>(() => {
     if (!problems) {

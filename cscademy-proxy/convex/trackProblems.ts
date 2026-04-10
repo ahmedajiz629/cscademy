@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { requireAdminOrService, requireService } from "./auth";
 
 type BaseProblem = Doc<"trackProblems">;
 
@@ -318,6 +319,8 @@ export const listByTrack = query({
 export const listByTrackAdmin = query({
   args: { trackSlug: v.string() },
   handler: async (ctx, { trackSlug }) => {
+    await requireAdminOrService(ctx);
+
     const problems = await ctx.db
       .query("trackProblems")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
@@ -354,6 +357,8 @@ export const getBySlug = query({
 export const getCtfValidationData = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
+    await requireService(ctx);
+
     const results = await ctx.db
       .query("trackProblems")
       .withIndex("by_trackSlug_slug", (q) => q.eq("trackSlug", "ctf").eq("slug", slug))
@@ -408,6 +413,8 @@ export const create = mutation({
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    await requireAdminOrService(ctx);
+
     if (args.trackSlug === "software-engineering") {
       const existing = await ctx.db
         .query("trackProblems")
@@ -500,6 +507,8 @@ export const update = mutation({
     isOffline: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
+    await requireAdminOrService(ctx);
+
     const problem = await ctx.db.get(id);
 
     if (!problem) {
@@ -559,6 +568,8 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("trackProblems") },
   handler: async (ctx, { id }) => {
+    await requireAdminOrService(ctx);
+
     const problem = await ctx.db.get(id);
 
     if (!problem) {
@@ -573,6 +584,8 @@ export const remove = mutation({
 export const clearByTrack = mutation({
   args: { trackSlug: v.string() },
   handler: async (ctx, { trackSlug }) => {
+    await requireAdminOrService(ctx);
+
     const problems = await ctx.db
       .query("trackProblems")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
@@ -588,6 +601,8 @@ export const clearByTrack = mutation({
 export const setActive = mutation({
   args: { id: v.id("trackProblems"), isActive: v.boolean() },
   handler: async (ctx, { id, isActive }) => {
+    await requireAdminOrService(ctx);
+
     await ctx.db.patch(id, { isActive });
   },
 });

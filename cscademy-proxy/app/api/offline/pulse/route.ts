@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getConvexClient } from "@/lib/convex-server";
+import { getConvexServiceClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = auth.userId as Id<"users">;
-  const convex = getConvexClient();
+  const convex = await getConvexServiceClient("offline-pulse");
   const access = await getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug);
 
   if (!access.problem) {
@@ -45,10 +45,13 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 204 });
   }
 
-  await convex.mutation(api.offlineProblemSessions.flag, {
-    sessionId: access.session.sessionId,
-    reason: OFFLINE_ANTI_CHEAT_REASON,
-  });
+  await convex.mutation(
+    api.offlineProblemSessions.flag,
+    {
+      sessionId: access.session.sessionId,
+      reason: OFFLINE_ANTI_CHEAT_REASON,
+    }
+  );
 
   return new NextResponse(null, { status: 204 });
 }
