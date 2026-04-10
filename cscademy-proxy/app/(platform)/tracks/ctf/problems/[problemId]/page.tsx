@@ -66,13 +66,12 @@ export default function CtfProblemPage() {
     trackSlug: track.id,
     slug: problemId,
   }) as ProblemDetails | null | undefined;
-  const scoreRecord = useQuery(
-    api.scores.getByUserAndProblem,
+  const scoreRecords = useQuery(
+    api.scores.getByUserAndTrack,
     user?.id
       ? {
           userId: user.id as Id<"users">,
           trackSlug: track.id,
-          problemSlug: problemId,
         }
       : "skip"
   );
@@ -161,7 +160,8 @@ export default function CtfProblemPage() {
   const hasDownload = !!downloadableFileHref;
   const hasExternalLink = !!externalLinkHref;
   const isExternalDownload = /^https?:\/\//i.test(downloadableFileHref);
-  const isBestScoreLoading = !!user?.id && scoreRecord === undefined;
+  const isBestScoreLoading = !!user?.id && scoreRecords === undefined;
+  const scoreRecord = scoreRecords?.find((entry) => entry.problemSlug === problemId) ?? null;
   const bestScore = scoreRecord?.score ?? null;
   const attempts = scoreRecord?.attempts ?? 0;
   const solved = bestScore === problem.points;

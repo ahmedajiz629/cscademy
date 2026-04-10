@@ -141,13 +141,12 @@ export default function SoftwareEngineeringProblemPage() {
     trackSlug: track.id,
     slug: problemId,
   });
-  const scoreRecord = useQuery(
-    api.scores.getByUserAndProblem,
+  const scoreRecords = useQuery(
+    api.scores.getByUserAndTrack,
     user?.id
       ? {
           userId: user.id as Id<"users">,
           trackSlug: track.id,
-          problemSlug: problemId,
         }
       : "skip"
   );
@@ -191,7 +190,8 @@ export default function SoftwareEngineeringProblemPage() {
     setSubmissionRef(problem.defaultSubmissionRef || "challenge");
   }, [problem, submissionRef]);
 
-  const isBestScoreLoading = !!user?.id && scoreRecord === undefined;
+  const isBestScoreLoading = !!user?.id && scoreRecords === undefined;
+  const scoreRecord = scoreRecords?.find((entry) => entry.problemSlug === problemId) ?? null;
   const bestScore = scoreRecord?.score ?? null;
 
   async function evaluateSubmission() {
