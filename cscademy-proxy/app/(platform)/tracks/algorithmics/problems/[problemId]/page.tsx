@@ -121,6 +121,8 @@ export default function AlgorithmicsProblemIDEPage() {
   const probeImageRef = useRef<HTMLImageElement | null>(null);
   const pendingCloseReasonRef = useRef<string | null>(null);
   const probeTriggeredRef = useRef(false);
+  const codeDraftsRef = useRef<Record<string, string>>({});
+  const inputSeedKeyRef = useRef("");
 
   const clearProbeRequest = useCallback(() => {
     if (probeRetryTimeoutRef.current !== null) {
@@ -175,6 +177,8 @@ export default function AlgorithmicsProblemIDEPage() {
     setOptimisticClosedState(null);
     pendingCloseReasonRef.current = null;
     probeTriggeredRef.current = false;
+    codeDraftsRef.current = {};
+    inputSeedKeyRef.current = "";
     clearProbeRequest();
   }, [clearProbeRequest, problemId]);
 
@@ -258,6 +262,12 @@ export default function AlgorithmicsProblemIDEPage() {
 
   const problem = problemState.status === "ready" ? problemState.problem : null;
   const defaultLangId = languages?.[0]?.langId || "1";
+  const problemCodeSeedKey = problem
+    ? `${problem.slug}:${problem.starterCode ?? ""}`
+    : "";
+  const problemInputSeedKey = problem
+    ? `${problem.slug}:${problem.sampleInput ?? ""}`
+    : "";
 
   const starterCodeMap = useMemo(() => {
     if (!problem?.starterCode) return {};
@@ -275,17 +285,44 @@ export default function AlgorithmicsProblemIDEPage() {
   }, [languages, langId]);
 
   useEffect(() => {
-    if (problem && langId) {
-      const starter = starterCodeMap[langId] || starterCodeMap[defaultLangId] || "";
-      setCode(starter);
+    if (!problemCodeSeedKey || !langId) {
+      return;
     }
-  }, [problem, langId, defaultLangId, starterCodeMap]);
+
+    const draftKey = `${problemCodeSeedKey}:${langId}`;
+    const existingDraft = codeDraftsRef.current[draftKey];
+
+    if (existingDraft !== undefined) {
+      setCode(existingDraft);
+      return;
+    }
+
+    const starter = starterCodeMap[langId] || starterCodeMap[defaultLangId] || "";
+    codeDraftsRef.current[draftKey] = starter;
+    setCode(starter);
+  }, [problemCodeSeedKey, langId, defaultLangId, starterCodeMap]);
 
   useEffect(() => {
-    if (problem?.sampleInput && !input) {
-      setInput(problem.sampleInput);
+    if (!problemInputSeedKey || inputSeedKeyRef.current === problemInputSeedKey) {
+      return;
     }
-  }, [problem, input]);
+
+    inputSeedKeyRef.current = problemInputSeedKey;
+    setInput(problem?.sampleInput ?? "");
+  }, [problem?.sampleInput, problemInputSeedKey]);
+
+  const handleCodeChange = useCallback(
+    (nextCode: string) => {
+      setCode(nextCode);
+
+      if (!problemCodeSeedKey || !langId) {
+        return;
+      }
+
+      codeDraftsRef.current[`${problemCodeSeedKey}:${langId}`] = nextCode;
+    },
+    [langId, problemCodeSeedKey]
+  );
 
   const currentLang = languages?.find((l) => l.langId === langId);
   const codemirrorLang = currentLang?.codemirrorMode || "cpp";
@@ -797,7 +834,11 @@ export default function AlgorithmicsProblemIDEPage() {
 
         <div className="flex-1 flex flex-col">
           <div className="flex-1 overflow-hidden">
-            <CodeEditor value={code} onChange={setCode} language={codemirrorLang} />
+            <CodeEditor
+              value={code}
+              onChange={handleCodeChange}
+              language={codemirrorLang}
+            />
           </div>
 
           <div className="h-28 border-t border-gray-800">
