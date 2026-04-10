@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import ParticipantNotifications from "@/components/ParticipantNotifications";
 
 interface User {
@@ -21,6 +23,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+  const platformSettings = useQuery(api.platformSettings.get);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -45,6 +48,9 @@ export default function DashboardLayout({
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: "⊞" },
     { href: "/tracks", label: "Tracks", icon: "▤" },
+    ...((platformSettings?.globalLeaderboardVisible ?? false)
+      ? [{ href: "/leaderboard", label: "Leaderboard", icon: "≣" }]
+      : []),
   ];
 
   return (

@@ -244,6 +244,7 @@ async function mergeProblemWithConfig(
     externalLink: undefined as string | undefined,
     isOffline: problem.isOffline ?? false,
     offlineTaskPreDescription: problem.offlineTaskPreDescription,
+    leaderboardVisible: problem.leaderboardVisible ?? false,
   };
 
   if (problem.trackSlug === "algorithmics") {
@@ -433,6 +434,7 @@ export const create = mutation({
     encryptedFlag: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
     offlineTaskPreDescription: v.optional(v.string()),
+    leaderboardVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     if (args.trackSlug === "software-engineering") {
@@ -461,6 +463,7 @@ export const create = mutation({
       order: args.order,
       isOffline: args.isOffline,
       offlineTaskPreDescription: args.offlineTaskPreDescription,
+      leaderboardVisible: args.leaderboardVisible,
     });
 
     if (args.trackSlug === "algorithmics") {
@@ -527,6 +530,7 @@ export const update = mutation({
     encryptedFlag: v.optional(v.string()),
     isOffline: v.optional(v.boolean()),
     offlineTaskPreDescription: v.optional(v.string()),
+    leaderboardVisible: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
     const problem = await ctx.db.get(id);
@@ -542,6 +546,7 @@ export const update = mutation({
       order: fields.order,
       isOffline: fields.isOffline,
       offlineTaskPreDescription: fields.offlineTaskPreDescription,
+      leaderboardVisible: fields.leaderboardVisible,
     });
 
     if (Object.keys(sharedFields).length > 0) {
@@ -631,6 +636,19 @@ export const setActive = mutation({
     if (previousEffectiveState !== isActive) {
       await insertProblemAvailabilityNotification(ctx, problem, isActive);
     }
+  },
+});
+
+export const setLeaderboardVisible = mutation({
+  args: { id: v.id("trackProblems"), leaderboardVisible: v.boolean() },
+  handler: async (ctx, { id, leaderboardVisible }) => {
+    const problem = await ctx.db.get(id);
+
+    if (!problem) {
+      throw new Error("Problem not found.");
+    }
+
+    await ctx.db.patch(id, { leaderboardVisible });
   },
 });
 

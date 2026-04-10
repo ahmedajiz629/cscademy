@@ -43,3 +43,36 @@ export const setActive = mutation({
     }
   },
 });
+
+export const setLeaderboardConfig = mutation({
+  args: {
+    trackSlug: v.string(),
+    leaderboardVisible: v.boolean(),
+    leaderboardCoefficient: v.number(),
+  },
+  handler: async (ctx, { trackSlug, leaderboardVisible, leaderboardCoefficient }) => {
+    const normalizedCoefficient = Number.isFinite(leaderboardCoefficient)
+      ? Math.max(0, leaderboardCoefficient)
+      : 1;
+
+    const existing = await ctx.db
+      .query("trackSettings")
+      .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        leaderboardVisible,
+        leaderboardCoefficient: normalizedCoefficient,
+      });
+      return existing._id;
+    }
+
+    return ctx.db.insert("trackSettings", {
+      trackSlug,
+      isActive: true,
+      leaderboardVisible,
+      leaderboardCoefficient: normalizedCoefficient,
+    });
+  },
+});

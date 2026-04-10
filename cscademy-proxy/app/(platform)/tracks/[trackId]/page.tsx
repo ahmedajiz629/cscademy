@@ -9,6 +9,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import { formatScore } from "@/lib/score-format";
 import { getTrack } from "@/lib/tracks";
 import { isOfflineSessionStale } from "@/lib/offline-session";
+import TrackLeaderboardPanel from "@/components/leaderboards/TrackLeaderboardPanel";
 
 interface User {
   id: string;
@@ -30,9 +31,13 @@ export default function TrackDetailPage() {
   const trackId = params.trackId as string;
   const [user, setUser] = useState<User | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [activeTab, setActiveTab] = useState<"problems" | "leaderboard">("problems");
 
   const track = getTrack(trackId);
   const problems = useQuery(api.trackProblems.listByTrack, { trackSlug: trackId });
+  const leaderboardOptions = useQuery(api.leaderboards.getTrackScopeOptions, {
+    trackSlug: trackId,
+  });
   const sessions = useQuery(
     api.offlineProblemSessions.listByUserAndTrack,
     user?.id
@@ -119,6 +124,7 @@ export default function TrackDetailPage() {
   const resolvedProblems = problemsList || [];
   const totalEarned = scores?.reduce((sum, s) => sum + s.score, 0) || 0;
   const totalPossible = resolvedProblems.reduce((sum, p) => sum + p.points, 0);
+  const hasLeaderboard = (leaderboardOptions?.options.length ?? 0) > 0;
 
   return (
     <div className="p-8">
@@ -148,7 +154,34 @@ export default function TrackDetailPage() {
         </div>
       </div>
 
-      {problemsList === null ? (
+      {hasLeaderboard && (
+        <div className="mb-6 flex items-center gap-2 border-b border-gray-800">
+          <button
+            onClick={() => setActiveTab("problems")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "problems"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Problems
+          </button>
+          <button
+            onClick={() => setActiveTab("leaderboard")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "leaderboard"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Leaderboard
+          </button>
+        </div>
+      )}
+
+      {activeTab === "leaderboard" && hasLeaderboard ? (
+        <TrackLeaderboardPanel trackSlug={trackId} />
+      ) : problemsList === null ? (
         <div className="text-gray-500 p-8 text-center border border-gray-800 rounded-xl">
           Loading problems...
         </div>

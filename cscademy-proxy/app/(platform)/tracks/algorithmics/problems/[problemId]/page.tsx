@@ -20,6 +20,7 @@ import {
 } from "@/lib/offline-gateway";
 import { isOfflineSessionStale } from "@/lib/offline-session";
 import OutputPanel from "@/components/OutputPanel";
+import ProblemLeaderboardPanel from "@/components/leaderboards/ProblemLeaderboardPanel";
 
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), {
   ssr: false,
@@ -40,6 +41,7 @@ interface ProblemDetails {
   starterCode?: string;
   isOffline?: boolean;
   offlineTaskPreDescription?: string;
+  leaderboardVisible?: boolean;
   probeImageUrl?: string;
 }
 
@@ -128,6 +130,7 @@ export default function AlgorithmicsProblemIDEPage() {
   const [score, setScore] = useState<number | null>(null);
   const [isConnectingOffline, setIsConnectingOffline] = useState(false);
   const [offlineError, setOfflineError] = useState("");
+  const [activeTab, setActiveTab] = useState<"workspace" | "leaderboard">("workspace");
   const [optimisticClosedState, setOptimisticClosedState] = useState<
     | {
         problem: OfflineProblemPreview;
@@ -818,6 +821,37 @@ export default function AlgorithmicsProblemIDEPage() {
         </div>
       </div>
 
+      {problem.leaderboardVisible && (
+        <div className="flex items-center gap-2 border-b border-gray-800 bg-[#0a0a0a] px-4 pt-3">
+          <button
+            onClick={() => setActiveTab("workspace")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "workspace"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Workspace
+          </button>
+          <button
+            onClick={() => setActiveTab("leaderboard")}
+            className={`rounded-t-xl px-4 py-2 text-sm transition-colors ${
+              activeTab === "leaderboard"
+                ? "bg-[#111127] text-white"
+                : "text-gray-500 hover:text-white"
+            }`}
+          >
+            Leaderboard
+          </button>
+        </div>
+      )}
+
+      {problem.leaderboardVisible && activeTab === "leaderboard" ? (
+        <div className="flex-1 overflow-auto p-8">
+          <ProblemLeaderboardPanel trackSlug={track.id} problemSlug={problemId} />
+        </div>
+      ) : (
+
       <div className="flex-1 flex overflow-hidden">
         <div className="w-80 border-r border-gray-800 overflow-auto p-4">
           <h2 className="text-lg font-semibold text-white mb-3">
@@ -884,6 +918,7 @@ export default function AlgorithmicsProblemIDEPage() {
           />
         </div>
       </div>
+      )}
     </div>
   );
 }

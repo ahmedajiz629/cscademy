@@ -32,6 +32,7 @@ export default defineSchema({
     isActive: v.optional(v.boolean()), // undefined/true = active, false = disabled
     isOffline: v.optional(v.boolean()), // undefined/false = regular online task
     offlineTaskPreDescription: v.optional(v.string()),
+    leaderboardVisible: v.optional(v.boolean()),
   })
     .index("by_trackSlug", ["trackSlug"])
     .index("by_trackSlug_slug", ["trackSlug", "slug"]),
@@ -111,7 +112,14 @@ export default defineSchema({
   trackSettings: defineTable({
     trackSlug: v.string(),
     isActive: v.boolean(),
+    leaderboardVisible: v.optional(v.boolean()),
+    leaderboardCoefficient: v.optional(v.number()),
   }).index("by_trackSlug", ["trackSlug"]),
+
+  platformSettings: defineTable({
+    key: v.string(),
+    globalLeaderboardVisible: v.optional(v.boolean()),
+  }).index("by_key", ["key"]),
 
   notifications: defineTable({
     title: v.string(),

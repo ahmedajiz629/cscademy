@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { getAllTracks } from "@/lib/tracks";
 
@@ -10,6 +10,10 @@ const tracks = getAllTracks();
 export default function AdminPage() {
   const users = useQuery(api.users.list);
   const scores = useQuery(api.scores.listAll);
+  const platformSettings = useQuery(api.platformSettings.get);
+  const setGlobalLeaderboardVisible = useMutation(
+    api.platformSettings.setGlobalLeaderboardVisible
+  );
 
   const studentCount = users?.filter((u) => u.role === "student").length ?? 0;
   const activeTracks = tracks.filter((t) => t.isActive);
@@ -49,6 +53,40 @@ export default function AdminPage() {
           >
             Manage Scores
           </Link>
+        </div>
+      </div>
+
+      <div className="mt-6 p-5 bg-[#111127] border border-gray-800 rounded-xl max-w-3xl">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Global Leaderboard</h2>
+            <p className="text-sm text-gray-400 mt-1">
+              Control the dedicated participant global leaderboard page and navigation item.
+            </p>
+          </div>
+          <button
+            onClick={() =>
+              setGlobalLeaderboardVisible({
+                visible: !(platformSettings?.globalLeaderboardVisible ?? false),
+              })
+            }
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+              platformSettings?.globalLeaderboardVisible ? "bg-green-500" : "bg-gray-600"
+            }`}
+            title={
+              platformSettings?.globalLeaderboardVisible
+                ? "Disable global leaderboard"
+                : "Enable global leaderboard"
+            }
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                platformSettings?.globalLeaderboardVisible
+                  ? "translate-x-5"
+                  : "translate-x-0"
+              }`}
+            />
+          </button>
         </div>
       </div>
 
