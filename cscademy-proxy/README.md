@@ -40,24 +40,28 @@ The project expects these environment variables:
 - `NEXT_PUBLIC_CONVEX_URL`
 - `NEXT_PUBLIC_CONVEX_SITE_URL`
 - `CONVEX_INTERNAL_URL` for server-side access to the private Convex backend
+- `CONVEX_AUTH_PRIVATE_KEY`
+- `CONVEX_AUTH_JWKS`
 - `JWT_SECRET`
-- `OFFLINE_GATEWAY_SECRET` or `JWT_SECRET`
+- `OFFLINE_GATEWAY_SECRET`
+- `CTF_FLAG_ENCRYPTION_KEY`
 - `OFFLINE_GATEWAY_PORT` (defaults to `8787`)
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
+
+There are no secret fallbacks. If any required auth or encryption variable is missing, the app throws an explicit startup or runtime error.
 
 For production, set `NEXT_PUBLIC_CONVEX_URL` and `NEXT_PUBLIC_CONVEX_SITE_URL`
 to the same-origin Convex proxy path, for example
 `https://tech.ajiz.org/convex`, while keeping `CONVEX_INTERNAL_URL` pointed at
 the private backend such as `http://127.0.0.1:3210`.
 
+`CONVEX_AUTH_JWKS` must also be set in the linked Convex deployment environment because [convex/auth.config.ts](convex/auth.config.ts) reads it directly.
+
 Docker must also be installed on the server for software engineering and logic/reverse-engineering evaluations.
 
-Optional evaluator defaults:
+For logic and reverse engineering problems, the Docker image and evaluation command live in the per-problem configuration or seeded problem data, not in environment variables.
 
-- `LOGIC_REVERSE_ENGINEERING_DOCKER_IMAGE`
-- `LOGIC_REVERSE_ENGINEERING_EVALUATION_COMMAND`
-
-The logic evaluator copies the raw judge source and submission file into the container, pipes the submission to stdin, and then runs the configured command. Inside the container, `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE` points to the raw judge file and `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE` points to the saved submission input.
+The logic evaluator copies the raw judge source and submission file into the container, pipes the submission to stdin, and then runs the configured command. Inside the shell command, `$1` is the copied judge file path, `$2` is the copied submission file path, and `$3` is the original judge source value.
 
 External evaluation account credentials are linked per user from the admin interface.
 

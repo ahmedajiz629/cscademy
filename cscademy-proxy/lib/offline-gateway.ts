@@ -12,8 +12,8 @@ export interface OfflineGatewayTokenPayload {
 }
 
 function getOfflineGatewaySecret() {
-  const secret = process.env.OFFLINE_GATEWAY_SECRET || process.env.JWT_SECRET;
-  if (!secret) throw new Error("OFFLINE_GATEWAY_SECRET or JWT_SECRET must be set");
+  const secret = process.env.OFFLINE_GATEWAY_SECRET;
+  if (!secret) throw new Error("OFFLINE_GATEWAY_SECRET must be set");
   return new TextEncoder().encode(secret);
 }
 

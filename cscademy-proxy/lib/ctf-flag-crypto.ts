@@ -4,10 +4,10 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 const ALGORITHM = "aes-256-gcm";
 
 function getEncryptionKey() {
-  const secret = process.env.CTF_FLAG_ENCRYPTION_KEY || process.env.JWT_SECRET;
+  const secret = process.env.CTF_FLAG_ENCRYPTION_KEY;
 
   if (!secret) {
-    throw new Error("CTF_FLAG_ENCRYPTION_KEY or JWT_SECRET must be configured.");
+    throw new Error("CTF_FLAG_ENCRYPTION_KEY must be configured.");
   }
 
   return createHash("sha256").update(secret).digest();

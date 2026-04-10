@@ -277,7 +277,7 @@ Evaluation
 The platform runs a Docker challenge runner against your private branch with:
 - REPO_URL=https://github.com/<user>/<repo>
 - SUBMISSION_REF=challenge
-- BASE_COMMIT=fe8afb3
+- BASE_COMMIT=5ec858f
 - ACCESS_TOKEN=github_pat_<...>
 - image: ajiztech/challenge-1
 
@@ -290,7 +290,7 @@ Result rules
       order: 1,
       publicRepositoryUrl: "https://github.com/ajiz-org/software-engineering-challenge",
       evaluationImage: "ajiztech/challenge-1",
-      baseCommit: "9a008418a3e56b9d214c4e64815f6155380f2378",
+      baseCommit: "5ec858fc74824996f78a21ee098a5955a7949cf8",
       defaultSubmissionRef: "main",
     },
     {
@@ -313,7 +313,7 @@ Scoring rule
       judgeFilePath: "/hlqpz.ts",
       evaluationImage: "node:22-alpine",
       evaluationCommand:
-        'node --experimental-strip-types "$LOGIC_REVERSE_ENGINEERING_JUDGE_FILE" "$(cat "$LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE")"',
+        'node --experimental-strip-types "$1" "$(cat "$2")"',
       starterSubmission: "",
     },
   ];

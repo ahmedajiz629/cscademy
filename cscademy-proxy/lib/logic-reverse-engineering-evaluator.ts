@@ -273,9 +273,7 @@ function formatCommandFailure(action: string, result: CommandResult): string {
 }
 
 function getRequiredImage(config: LogicReverseEngineeringEvaluationConfig): string {
-  const image =
-    config.image?.trim() ||
-    process.env.LOGIC_REVERSE_ENGINEERING_DOCKER_IMAGE?.trim();
+  const image = config.image?.trim();
 
   if (!image) {
     throw new LogicReverseEngineeringValidationError(
@@ -287,9 +285,7 @@ function getRequiredImage(config: LogicReverseEngineeringEvaluationConfig): stri
 }
 
 function getRequiredCommand(config: LogicReverseEngineeringEvaluationConfig): string {
-  const command =
-    config.command?.trim() ||
-    process.env.LOGIC_REVERSE_ENGINEERING_EVALUATION_COMMAND?.trim();
+  const command = config.command?.trim();
 
   if (!command) {
     throw new LogicReverseEngineeringValidationError(
@@ -476,16 +472,14 @@ export async function runLogicReverseEngineeringEvaluation(
         "-i",
         "-w",
         CONTAINER_WORKDIR,
-        "-e",
-        `LOGIC_REVERSE_ENGINEERING_JUDGE_FILE=${CONTAINER_WORKDIR}/${workspace.judgeFileName}`,
-        "-e",
-        `LOGIC_REVERSE_ENGINEERING_SUBMISSION_FILE=${CONTAINER_WORKDIR}/${SUBMISSION_FILE_NAME}`,
-        "-e",
-        `LOGIC_REVERSE_ENGINEERING_JUDGE_SOURCE=${workspace.judgeFilePath}`,
         containerId,
         "sh",
         "-lc",
         command,
+        "logic-reverse-engineering-eval",
+        `${CONTAINER_WORKDIR}/${workspace.judgeFileName}`,
+        `${CONTAINER_WORKDIR}/${SUBMISSION_FILE_NAME}`,
+        workspace.judgeFilePath,
       ],
       {
         env: process.env,

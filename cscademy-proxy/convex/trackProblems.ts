@@ -17,6 +17,40 @@ function cleanFields(fields: Record<string, unknown>) {
   return clean;
 }
 
+function getTrimmedString(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function assertLogicReverseEngineeringConfig(
+  fields: {
+    judgeFilePath?: string;
+    evaluationImage?: string;
+    evaluationCommand?: string;
+  },
+  existing?: {
+    judgeFilePath?: string;
+    evaluationImage?: string;
+    evaluationCommand?: string;
+  } | null
+) {
+  const judgeFilePath =
+    getTrimmedString(fields.judgeFilePath) ??
+    getTrimmedString(existing?.judgeFilePath);
+  const evaluationImage =
+    getTrimmedString(fields.evaluationImage) ??
+    getTrimmedString(existing?.evaluationImage);
+  const evaluationCommand =
+    getTrimmedString(fields.evaluationCommand) ??
+    getTrimmedString(existing?.evaluationCommand);
+
+  if (!judgeFilePath || !evaluationImage || !evaluationCommand) {
+    throw new Error(
+      "Logic & reverse engineering problems require judgeFilePath, evaluationImage, and evaluationCommand."
+    );
+  }
+}
+
 async function getAlgorithmicsConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
   const configs = await ctx.db
     .query("algorithmicsProblemConfigs")
@@ -428,6 +462,10 @@ export const create = mutation({
       }
     }
 
+    if (args.trackSlug === "logic-reverse-engineering") {
+      assertLogicReverseEngineeringConfig(args);
+    }
+
     if (args.trackSlug === "ctf" && !args.encryptedFlag?.trim()) {
       throw new Error("CTF encrypted flag is required.");
     }
@@ -513,6 +551,15 @@ export const update = mutation({
 
     if (!problem) {
       throw new Error("Problem not found.");
+    }
+
+    const existingLogicConfig =
+      problem.trackSlug === "logic-reverse-engineering"
+        ? await getLogicReverseEngineeringConfigByProblemId(ctx, id)
+        : null;
+
+    if (problem.trackSlug === "logic-reverse-engineering") {
+      assertLogicReverseEngineeringConfig(fields, existingLogicConfig);
     }
 
     const sharedFields = cleanFields({
