@@ -19,13 +19,13 @@ function serializeUser(user: any) {
   return safeUser;
 }
 
-async function resolvePasswordHash(args: {
+function resolvePasswordHash(args: {
   password?: string;
   passwordHash?: string;
 }) {
   const password = args.password?.trim();
   if (password) {
-    return bcrypt.hash(password, SALT_ROUNDS);
+    return bcrypt.hashSync(password, SALT_ROUNDS);
   }
 
   const passwordHash = args.passwordHash?.trim();
@@ -99,7 +99,7 @@ export const create = mutation({
     return ctx.db.insert("users", {
       name: args.name,
       email: args.email,
-      passwordHash: await resolvePasswordHash(args),
+      passwordHash: resolvePasswordHash(args),
       role: args.role,
       comment: args.comment,
       isActive: true,
@@ -130,7 +130,7 @@ export const update = mutation({
     }
 
     if (password?.trim() || passwordHash?.trim()) {
-      clean.passwordHash = await resolvePasswordHash({
+      clean.passwordHash = resolvePasswordHash({
         password,
         passwordHash,
       });

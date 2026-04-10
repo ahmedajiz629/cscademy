@@ -10,7 +10,22 @@ const CONVEX_AUTH_ISSUER = "https://ajiz-tech-challenge.invalid/convex";
 const CONVEX_AUTH_AUDIENCE = "ajiz-tech-challenge";
 
 function normalizeMultilineEnv(value: string) {
-  return value.replace(/\\n/g, "\n").trim();
+  const trimmed = value.trim();
+  const unwrapped =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1)
+      : trimmed;
+
+  return unwrapped
+    .replace(/\\\r?\n/g, "\n")
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\\r/g, "\r")
+    .replace(/\\\\r/g, "\r")
+    .replace(/\\r/g, "\r")
+    .replace(/\\"/g, '"')
+    .trim();
 }
 
 function getRequiredEnv(name: "CONVEX_AUTH_JWKS" | "CONVEX_AUTH_PRIVATE_KEY") {

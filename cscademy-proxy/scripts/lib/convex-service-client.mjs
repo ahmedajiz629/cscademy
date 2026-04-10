@@ -86,7 +86,22 @@ export function ensureScriptEnvLoaded() {
 }
 
 function normalizeMultilineEnv(value) {
-  return value.replace(/\\n/g, "\n").trim();
+  const trimmed = value.trim();
+  const unwrapped =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1)
+      : trimmed;
+
+  return unwrapped
+    .replace(/\\\r?\n/g, "\n")
+    .replace(/\\\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\\r/g, "\r")
+    .replace(/\\\\r/g, "\r")
+    .replace(/\\r/g, "\r")
+    .replace(/\\"/g, '"')
+    .trim();
 }
 
 function getRequiredEnv(name) {

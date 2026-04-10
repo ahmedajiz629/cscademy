@@ -73,7 +73,7 @@ function buildOriginBoundOfflineGatewayUrl(
   forwardedProto?: string
 ): string {
   const sourceUrl = getSourceUrl(rawValue, forwardedProto);
-  sourceUrl.protocol = sourceUrl.protocol === "https:" ? "wss:" : "ws:";
+  sourceUrl.protocol = "ws:";
   sourceUrl.port = port;
   sourceUrl.pathname = "";
   sourceUrl.search = "";
