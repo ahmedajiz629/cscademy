@@ -51,14 +51,34 @@ function getSourceUrl(rawValue: string | URL, forwardedProto?: string): URL {
   return sourceUrl;
 }
 
-function getRequiredPublicOfflineGatewayUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_URL?.trim();
+function getRequiredOfflineGatewayPort() {
+  const configuredPort = process.env.OFFLINE_GATEWAY_PORT?.trim();
 
-  if (!configuredUrl) {
-    throw new Error("NEXT_PUBLIC_OFFLINE_GATEWAY_URL must be configured.");
+  if (!configuredPort) {
+    throw new Error("OFFLINE_GATEWAY_PORT must be configured.");
   }
 
-  return normalizeOfflineGatewayUrl(configuredUrl);
+  const parsedPort = Number(configuredPort);
+
+  if (!Number.isInteger(parsedPort) || parsedPort <= 0) {
+    throw new Error("OFFLINE_GATEWAY_PORT must be a positive integer.");
+  }
+
+  return String(parsedPort);
+}
+
+function buildOriginBoundOfflineGatewayUrl(
+  rawValue: string | URL,
+  port: string,
+  forwardedProto?: string
+): string {
+  const sourceUrl = getSourceUrl(rawValue, forwardedProto);
+  sourceUrl.protocol = sourceUrl.protocol === "https:" ? "wss:" : "ws:";
+  sourceUrl.port = port;
+  sourceUrl.pathname = "";
+  sourceUrl.search = "";
+  sourceUrl.hash = "";
+  return normalizeOfflineGatewayUrl(sourceUrl.toString());
 }
 
 export function canStartOfflineTaskFromUrl(
@@ -68,8 +88,15 @@ export function canStartOfflineTaskFromUrl(
   return getSourceUrl(rawValue, forwardedProto).protocol === "http:";
 }
 
-export function resolveOfflineGatewayUrlInBrowser(): string {
-  return getRequiredPublicOfflineGatewayUrl();
+export function resolveOfflineGatewayUrl(
+  requestUrl: string | URL,
+  forwardedProto?: string
+): string {
+  return buildOriginBoundOfflineGatewayUrl(
+    requestUrl,
+    getRequiredOfflineGatewayPort(),
+    forwardedProto
+  );
 }
 
 export async function createOfflineGatewayToken(

@@ -46,7 +46,7 @@ App env (`.env.local` for local development, `.env.server` for the deployed app)
 - `CONVEX_AUTH_JWKS`
 - `JWT_SECRET`
 - `OFFLINE_GATEWAY_SECRET`
-- `NEXT_PUBLIC_OFFLINE_GATEWAY_URL`
+- `OFFLINE_GATEWAY_PORT`
 - `CTF_FLAG_ENCRYPTION_KEY`
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 - `CSACADEMY_EMAIL`
@@ -67,9 +67,9 @@ There are no runtime URL or secret fallbacks. If a required URL, key, or gateway
 For production, set `NEXT_PUBLIC_CONVEX_URL` to the same-origin Convex proxy
 path, for example `https://tech.ajiz.org/convex`, set `CONVEX_URL` to the
 private backend such as `http://127.0.0.1:3210`, and set
-`NEXT_PUBLIC_OFFLINE_GATEWAY_URL` to the public websocket endpoint exposed to
-students, for example `ws://offline-room.local:8787` or
-`wss://offline.ajiz.org`.
+`OFFLINE_GATEWAY_PORT` to the websocket port exposed by the offline room host.
+The app derives the gateway URL from the current request origin and swaps only
+the port.
 
 The Convex auth algorithm, issuer, and audience are fixed in code. Only `CONVEX_AUTH_JWKS` must also be set in the linked Convex deployment environment because [convex/auth.config.ts](convex/auth.config.ts) reads it directly.
 
@@ -87,7 +87,7 @@ External evaluation account credentials are linked per user from the admin inter
 - Convex stores users, track settings, problems, languages, scores, and offline session state.
 - In production, Convex is expected to be reverse-proxied on the same origin under a path such as `/convex`; the proxy should strip that prefix before forwarding to the backend.
 - The offline gateway is expected to run on the offline-room host and maintains live presence for offline tasks.
-- Offline tasks should be opened from the offline room HTTP entrypoint; the app connects to the explicit public gateway URL configured in `NEXT_PUBLIC_OFFLINE_GATEWAY_URL`.
+- Offline tasks should be opened from the offline room HTTP entrypoint; the app derives the gateway URL from the current origin and `OFFLINE_GATEWAY_PORT`.
 - The algorithmics track currently uses the external judge integration for run and submit actions.
 - The software engineering track evaluates repository branches by running configured Docker images against student submissions.
 - The logic and reverse engineering track evaluates a submitted string by fetching a configured judge URL or public path, copying it into a Docker container, and running a configurable command inside that container.

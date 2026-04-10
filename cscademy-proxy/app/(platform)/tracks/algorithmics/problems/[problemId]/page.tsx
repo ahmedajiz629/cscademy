@@ -15,7 +15,6 @@ import {
 } from "@/lib/offline-anti-cheat";
 import {
   canStartOfflineTaskFromUrl,
-  resolveOfflineGatewayUrlInBrowser,
 } from "@/lib/offline-gateway";
 import { isOfflineSessionStale } from "@/lib/offline-session";
 import OutputPanel from "@/components/OutputPanel";
@@ -496,14 +495,12 @@ export default function AlgorithmicsProblemIDEPage() {
     socketRef.current?.close();
 
     try {
-      const gatewayUrl = resolveOfflineGatewayUrlInBrowser();
       const res = await fetch("/api/offline/problem-entry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           trackSlug: trackId,
           problemSlug: problemId,
-          gatewayUrl,
         }),
       });
       const data = await res.json();
@@ -512,7 +509,11 @@ export default function AlgorithmicsProblemIDEPage() {
         throw new Error(data.error || "Failed to start offline task");
       }
 
-      const wsUrl = new URL(gatewayUrl);
+      if (typeof data.gatewayUrl !== "string") {
+        throw new Error("Offline gateway URL missing from server response");
+      }
+
+      const wsUrl = new URL(data.gatewayUrl);
       wsUrl.searchParams.set("token", data.token);
       const socket = new WebSocket(wsUrl.toString());
       socketRef.current = socket;
