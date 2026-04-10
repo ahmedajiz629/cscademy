@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { insertProblemAvailabilityNotification } from "./notificationHelpers";
 
 type BaseProblem = Doc<"trackProblems">;
 
@@ -617,7 +618,19 @@ export const clearByTrack = mutation({
 export const setActive = mutation({
   args: { id: v.id("trackProblems"), isActive: v.boolean() },
   handler: async (ctx, { id, isActive }) => {
+    const problem = await ctx.db.get(id);
+
+    if (!problem) {
+      throw new Error("Problem not found.");
+    }
+
+    const previousEffectiveState = problem.isActive !== false;
+
     await ctx.db.patch(id, { isActive });
+
+    if (previousEffectiveState !== isActive) {
+      await insertProblemAvailabilityNotification(ctx, problem, isActive);
+    }
   },
 });
 

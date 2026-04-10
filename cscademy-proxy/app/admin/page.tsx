@@ -51,6 +51,23 @@ export default function AdminPage() {
           </Link>
         </div>
       </div>
+
+      <div className="mt-6 p-5 bg-[#111127] border border-gray-800 rounded-xl max-w-3xl">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Notifications</h2>
+            <p className="text-sm text-gray-400 mt-1">
+              Send custom alerts and review automatic opened or closed notices for tracks and tasks.
+            </p>
+          </div>
+          <Link
+            href="/admin/notifications"
+            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors whitespace-nowrap"
+          >
+            Manage Notifications
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

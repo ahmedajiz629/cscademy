@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { insertTrackAvailabilityNotification } from "./notificationHelpers";
 
 /** Get the DB-stored active override for a specific track (null = use code default) */
 export const getBySlug = query({
@@ -28,10 +29,17 @@ export const setActive = mutation({
       .query("trackSettings")
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .first();
+
+    const previousEffectiveState = existing?.isActive ?? true;
+
     if (existing) {
       await ctx.db.patch(existing._id, { isActive });
     } else {
       await ctx.db.insert("trackSettings", { trackSlug, isActive });
+    }
+
+    if (previousEffectiveState !== isActive) {
+      await insertTrackAvailabilityNotification(ctx, trackSlug, isActive);
     }
   },
 });

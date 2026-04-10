@@ -113,6 +113,40 @@ export default defineSchema({
     isActive: v.boolean(),
   }).index("by_trackSlug", ["trackSlug"]),
 
+  notifications: defineTable({
+    title: v.string(),
+    message: v.string(),
+    kind: v.union(
+      v.literal("custom"),
+      v.literal("track_opened"),
+      v.literal("track_closed"),
+      v.literal("problem_opened"),
+      v.literal("problem_closed")
+    ),
+    level: v.union(
+      v.literal("info"),
+      v.literal("success"),
+      v.literal("warning")
+    ),
+    targetRole: v.union(
+      v.literal("student"),
+      v.literal("admin"),
+      v.literal("all")
+    ),
+    trackSlug: v.optional(v.string()),
+    problemSlug: v.optional(v.string()),
+    createdAt: v.number(),
+    createdByUserId: v.optional(v.id("users")),
+  }).index("by_createdAt", ["createdAt"]),
+
+  notificationDismissals: defineTable({
+    notificationId: v.id("notifications"),
+    userId: v.id("users"),
+    dismissedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_notification", ["userId", "notificationId"]),
+
   // User scores per problem
   scores: defineTable({
     userId: v.id("users"),

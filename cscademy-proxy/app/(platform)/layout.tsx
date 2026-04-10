@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { Id } from "@/convex/_generated/dataModel";
+import ParticipantNotifications from "@/components/ParticipantNotifications";
 
 interface User {
   id: string;
@@ -101,7 +103,12 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto">
+        {user.role === "student" && (
+          <ParticipantNotifications userId={user.id as Id<"users">} />
+        )}
+        {children}
+      </main>
     </div>
   );
 }
