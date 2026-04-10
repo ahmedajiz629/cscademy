@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as auth from "../auth.js";
 import type * as csacademyAccounts from "../csacademyAccounts.js";
 import type * as offlineProblemSessions from "../offlineProblemSessions.js";
 import type * as programmingLanguages from "../programmingLanguages.js";
@@ -24,6 +25,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  auth: typeof auth;
   csacademyAccounts: typeof csacademyAccounts;
   offlineProblemSessions: typeof offlineProblemSessions;
   programmingLanguages: typeof programmingLanguages;
