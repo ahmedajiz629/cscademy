@@ -6,10 +6,12 @@ import { SignJWT, importPKCS8 } from "jose";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const shellEnvKeys = new Set(Object.keys(process.env));
-const DEFAULT_CONVEX_AUTH_ALGORITHM = "RS256";
-const DEFAULT_CONVEX_AUTH_ISSUER = "https://ajiz-tech-challenge.invalid/convex";
-const DEFAULT_CONVEX_AUTH_AUDIENCE = "ajiz-tech-challenge";
+const DEFAULT_ENV_FILES = Object.freeze([".env", ".env.local"]);
+const CONVEX_AUTH_ALGORITHM = "RS256";
+const CONVEX_AUTH_ISSUER = "https://ajiz-tech-challenge.invalid/convex";
+const CONVEX_AUTH_AUDIENCE = "ajiz-tech-challenge";
 
+let configuredEnvFiles = [...DEFAULT_ENV_FILES];
 let didLoadEnvFiles = false;
 let privateKeyPromise = null;
 
@@ -59,13 +61,27 @@ function loadEnvFile(filePath) {
   }
 }
 
+export function setScriptEnvFiles(fileNames) {
+  if (didLoadEnvFiles) {
+    throw new Error("Script env files must be configured before they are loaded.");
+  }
+
+  if (!Array.isArray(fileNames) || fileNames.length === 0) {
+    throw new Error("Script env files must include at least one file name.");
+  }
+
+  configuredEnvFiles = [...fileNames];
+}
+
 export function ensureScriptEnvLoaded() {
   if (didLoadEnvFiles) {
     return;
   }
 
-  loadEnvFile(resolve(PROJECT_ROOT, ".env"));
-  loadEnvFile(resolve(PROJECT_ROOT, ".env.local"));
+  for (const fileName of configuredEnvFiles) {
+    loadEnvFile(resolve(PROJECT_ROOT, fileName));
+  }
+
   didLoadEnvFiles = true;
 }
 
@@ -85,37 +101,7 @@ function getRequiredEnv(name) {
 }
 
 export function getConvexUrl() {
-  ensureScriptEnvLoaded();
-
-  const url =
-    process.env.CONVEX_URL ||
-    process.env.CONVEX_INTERNAL_URL ||
-    process.env.NEXT_PUBLIC_CONVEX_URL;
-
-  if (!url?.trim()) {
-    throw new Error(
-      "One of CONVEX_URL, CONVEX_INTERNAL_URL, or NEXT_PUBLIC_CONVEX_URL must be configured."
-    );
-  }
-
-  return url.trim();
-}
-
-function getAlgorithm() {
-  ensureScriptEnvLoaded();
-  return process.env.CONVEX_AUTH_ALGORITHM === "ES256"
-    ? "ES256"
-    : DEFAULT_CONVEX_AUTH_ALGORITHM;
-}
-
-function getIssuer() {
-  ensureScriptEnvLoaded();
-  return process.env.CONVEX_AUTH_ISSUER || DEFAULT_CONVEX_AUTH_ISSUER;
-}
-
-function getAudience() {
-  ensureScriptEnvLoaded();
-  return process.env.CONVEX_AUTH_AUDIENCE || DEFAULT_CONVEX_AUTH_AUDIENCE;
+  return getRequiredEnv("CONVEX_URL");
 }
 
 function decodeJwksJson() {
@@ -150,7 +136,7 @@ async function getPrivateKey() {
 
     privateKeyPromise = importPKCS8(
       normalizeMultilineEnv(privateKeyPem),
-      getAlgorithm()
+      CONVEX_AUTH_ALGORITHM
     );
   }
 
@@ -163,13 +149,13 @@ export async function createConvexServiceToken(service, expiresIn = "12h") {
     service,
   })
     .setProtectedHeader({
-      alg: getAlgorithm(),
+      alg: CONVEX_AUTH_ALGORITHM,
       typ: "JWT",
       kid: getKeyId(),
     })
     .setSubject(`service:${service}`)
-    .setIssuer(getIssuer())
-    .setAudience(getAudience())
+    .setIssuer(CONVEX_AUTH_ISSUER)
+    .setAudience(CONVEX_AUTH_AUDIENCE)
     .setIssuedAt()
     .setExpirationTime(expiresIn)
     .sign(await getPrivateKey());

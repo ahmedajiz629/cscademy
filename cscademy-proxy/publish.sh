@@ -109,6 +109,8 @@ EXCLUDES=(
   ".DS_Store"
   "*.pem"
   "*.tsbuildinfo"
+  ".env.gateway"
+  ".env.gateway.local"
   ".env.local"
   ".env.development.local"
   ".env.production.local"
@@ -153,7 +155,7 @@ for entry in "$DEPLOY_DIR"/* "$DEPLOY_DIR"/.[!.]* "$DEPLOY_DIR"/..?*; do
   [[ -e "$entry" ]] || continue
   name="$(basename "$entry")"
   case "$name" in
-    .|..|.git|.convex|.env.local|.env.server|node_modules)
+    .|..|.git|.convex|.env.local|.env.server|.env.gateway|.env.gateway.local|node_modules)
       continue
       ;;
   esac

@@ -1,6 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
 
-const DEFAULT_OFFLINE_GATEWAY_PORT = "8787";
 const OFFLINE_GATEWAY_AUDIENCE = "offline-gateway";
 const OFFLINE_GATEWAY_ISSUER = "ajiz-tech-challenge";
 
@@ -33,10 +32,6 @@ export function normalizeOfflineGatewayUrl(rawValue: string): string {
     throw new Error("Offline gateway URL must use ws, wss, http, or https.");
   }
 
-  if (!url.port) {
-    url.port = DEFAULT_OFFLINE_GATEWAY_PORT;
-  }
-
   if (url.pathname === "/") {
     url.pathname = "";
   }
@@ -56,39 +51,14 @@ function getSourceUrl(rawValue: string | URL, forwardedProto?: string): URL {
   return sourceUrl;
 }
 
-function getOfflineGatewayPort(
-  configuredUrl: string | undefined,
-  configuredPort: string | undefined
-): string {
-  const explicitPort = configuredPort?.trim();
-  if (explicitPort) {
-    return explicitPort;
+function getRequiredPublicOfflineGatewayUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_URL?.trim();
+
+  if (!configuredUrl) {
+    throw new Error("NEXT_PUBLIC_OFFLINE_GATEWAY_URL must be configured.");
   }
 
-  const explicitUrl = configuredUrl?.trim();
-  if (!explicitUrl) {
-    return DEFAULT_OFFLINE_GATEWAY_PORT;
-  }
-
-  const withProtocol = /^[a-z]+:\/\//i.test(explicitUrl)
-    ? explicitUrl
-    : `ws://${explicitUrl}`;
-  const url = new URL(withProtocol);
-  return url.port || DEFAULT_OFFLINE_GATEWAY_PORT;
-}
-
-function buildOriginBoundOfflineGatewayUrl(
-  rawValue: string | URL,
-  port: string,
-  forwardedProto?: string
-): string {
-  const sourceUrl = getSourceUrl(rawValue, forwardedProto);
-  sourceUrl.protocol = sourceUrl.protocol === "https:" ? "wss:" : "ws:";
-  sourceUrl.port = port;
-  sourceUrl.pathname = "";
-  sourceUrl.search = "";
-  sourceUrl.hash = "";
-  return normalizeOfflineGatewayUrl(sourceUrl.toString());
+  return normalizeOfflineGatewayUrl(configuredUrl);
 }
 
 export function canStartOfflineTaskFromUrl(
@@ -98,29 +68,9 @@ export function canStartOfflineTaskFromUrl(
   return getSourceUrl(rawValue, forwardedProto).protocol === "http:";
 }
 
-export function resolveOfflineGatewayUrl(
-  requestUrl: string | URL,
-  forwardedProto?: string
-): string {
-  return buildOriginBoundOfflineGatewayUrl(
-    requestUrl,
-    getOfflineGatewayPort(
-      process.env.OFFLINE_GATEWAY_URL,
-      process.env.OFFLINE_GATEWAY_PORT
-    ),
-    forwardedProto
-  );
+export function resolveOfflineGatewayUrlInBrowser(): string {
+  return getRequiredPublicOfflineGatewayUrl();
 }
-
-export function resolveOfflineGatewayUrlInBrowser(currentUrl: string | URL): string {
-  return buildOriginBoundOfflineGatewayUrl(
-    currentUrl,
-    getOfflineGatewayPort(
-      process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_URL,
-      process.env.NEXT_PUBLIC_OFFLINE_GATEWAY_PORT
-    )
-  );
-  }
 
 export async function createOfflineGatewayToken(
   payload: OfflineGatewayTokenPayload

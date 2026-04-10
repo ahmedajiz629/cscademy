@@ -3,20 +3,40 @@ import { WebSocketServer } from "ws";
 import {
   ensureScriptEnvLoaded,
   getConvexServiceClient,
+  setScriptEnvFiles,
 } from "./lib/convex-service-client.mjs";
 
+setScriptEnvFiles([".env.gateway", ".env.gateway.local"]);
 ensureScriptEnvLoaded();
 
-const GATEWAY_SECRET = process.env.OFFLINE_GATEWAY_SECRET;
-const HOST = process.env.OFFLINE_GATEWAY_HOST || "0.0.0.0";
-const PORT = Number(process.env.OFFLINE_GATEWAY_PORT || 8787);
 const ISSUER = "ajiz-tech-challenge";
 const AUDIENCE = "offline-gateway";
 const HEARTBEAT_INTERVAL_MS = 5000;
 
-if (!GATEWAY_SECRET) {
-  throw new Error("OFFLINE_GATEWAY_SECRET must be set for the offline gateway.");
+function getRequiredEnv(name) {
+  const value = process.env[name]?.trim();
+
+  if (!value) {
+    throw new Error(`${name} must be configured for the offline gateway.`);
+  }
+
+  return value;
 }
+
+function getRequiredPort() {
+  const rawValue = getRequiredEnv("OFFLINE_GATEWAY_PORT");
+  const port = Number(rawValue);
+
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error("OFFLINE_GATEWAY_PORT must be a positive integer.");
+  }
+
+  return port;
+}
+
+const GATEWAY_SECRET = getRequiredEnv("OFFLINE_GATEWAY_SECRET");
+const HOST = getRequiredEnv("OFFLINE_GATEWAY_HOST");
+const PORT = getRequiredPort();
 
 const convex = await getConvexServiceClient("offline-gateway");
 const secret = new TextEncoder().encode(GATEWAY_SECRET);

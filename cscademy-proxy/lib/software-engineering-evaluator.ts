@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_LOG_CHARS = 50_000;
-const DEFAULT_DOCKER_BIN = "docker";
+const DOCKER_BIN = "docker";
 
 export class SoftwareEngineeringValidationError extends Error {}
 
@@ -269,8 +269,6 @@ export function normalizeSubmissionRef(
 export async function runSoftwareEngineeringEvaluation(
   config: SoftwareEngineeringEvaluationConfig
 ): Promise<SoftwareEngineeringEvaluationResult> {
-  const dockerBin =
-    process.env.SOFTWARE_ENGINEERING_DOCKER_BIN?.trim() || DEFAULT_DOCKER_BIN;
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return new Promise<SoftwareEngineeringEvaluationResult>((resolve, reject) => {
@@ -278,7 +276,7 @@ export async function runSoftwareEngineeringEvaluation(
     let timedOut = false;
 
     const child = spawn(
-      dockerBin,
+      DOCKER_BIN,
       [
         "run",
         "-i",

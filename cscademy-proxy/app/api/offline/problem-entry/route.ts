@@ -7,7 +7,6 @@ import { Id } from "@/convex/_generated/dataModel";
 import {
   createOfflineGatewayToken,
   normalizeOfflineGatewayUrl,
-  resolveOfflineGatewayUrl,
 } from "@/lib/offline-gateway";
 import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
 
@@ -18,9 +17,14 @@ export async function POST(req: NextRequest) {
   }
 
   const { trackSlug, problemSlug, gatewayUrl: rawGatewayUrl } = await req.json();
-  if (!trackSlug || !problemSlug) {
+  if (
+    !trackSlug ||
+    !problemSlug ||
+    typeof rawGatewayUrl !== "string" ||
+    !rawGatewayUrl.trim()
+  ) {
     return NextResponse.json(
-      { error: "trackSlug and problemSlug are required" },
+      { error: "trackSlug, problemSlug, and gatewayUrl are required" },
       { status: 400 }
     );
   }
@@ -55,14 +59,10 @@ export async function POST(req: NextRequest) {
   }
 
   const sessionId = randomUUID();
-  const forwardedProto = req.headers.get("x-forwarded-proto") ?? undefined;
   let gatewayUrl: string;
 
   try {
-    gatewayUrl =
-      typeof rawGatewayUrl === "string" && rawGatewayUrl.trim()
-        ? normalizeOfflineGatewayUrl(rawGatewayUrl)
-        : resolveOfflineGatewayUrl(req.nextUrl, forwardedProto);
+    gatewayUrl = normalizeOfflineGatewayUrl(rawGatewayUrl);
   } catch {
     return NextResponse.json(
       { error: "gatewayUrl must be a valid offline gateway URL." },

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "offline-gateway": "node --env-file=.env.local ./scripts/offline-gateway.mjs",
+    "offline-gateway": "node ./scripts/offline-gateway.mjs",
     "seed:software-engineering": "node ./scripts/seed-software-engineering.mjs"
   },
   "dependencies": {

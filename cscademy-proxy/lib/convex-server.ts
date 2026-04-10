@@ -9,10 +9,10 @@ import {
 } from "@/lib/convex-auth";
 
 function getConvexUrl() {
-  const url = process.env.CONVEX_INTERNAL_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
+  const url = process.env.CONVEX_URL?.trim();
 
   if (!url) {
-    throw new Error("CONVEX_INTERNAL_URL or NEXT_PUBLIC_CONVEX_URL not set");
+    throw new Error("CONVEX_URL must be configured.");
   }
 
   return url;

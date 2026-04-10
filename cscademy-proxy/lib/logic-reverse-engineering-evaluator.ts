@@ -5,11 +5,11 @@ import { basename, join, resolve, sep } from "node:path";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_LOG_CHARS = 50_000;
-const DEFAULT_DOCKER_BIN = "docker";
 const CONTAINER_WORKDIR = "/workspace";
 const CONTAINER_KEEPALIVE_COMMAND =
   'trap "exit 0" TERM INT; while :; do sleep 3600; done';
 const SUBMISSION_FILE_NAME = "submission.txt";
+const DOCKER_BIN = "docker";
 
 export class LogicReverseEngineeringValidationError extends Error {}
 
@@ -437,8 +437,6 @@ async function stopContainer(dockerBin: string, containerId: string | null): Pro
 export async function runLogicReverseEngineeringEvaluation(
   config: LogicReverseEngineeringEvaluationConfig
 ): Promise<LogicReverseEngineeringEvaluationResult> {
-  const dockerBin =
-    process.env.LOGIC_REVERSE_ENGINEERING_DOCKER_BIN?.trim() || DEFAULT_DOCKER_BIN;
   const image = getRequiredImage(config);
   const command = getRequiredCommand(config);
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -446,17 +444,17 @@ export async function runLogicReverseEngineeringEvaluation(
   let containerId: string | null = null;
 
   try {
-    containerId = await startContainer(dockerBin, image);
-    await ensureContainerWorkspace(dockerBin, containerId);
+    containerId = await startContainer(DOCKER_BIN, image);
+    await ensureContainerWorkspace(DOCKER_BIN, containerId);
     const copyOperations = [
       copyFileToContainer(
-        dockerBin,
+        DOCKER_BIN,
         containerId,
         join(workspace.workspaceDir, workspace.judgeFileName),
         workspace.judgeFileName
       ),
       copyFileToContainer(
-        dockerBin,
+        DOCKER_BIN,
         containerId,
         join(workspace.workspaceDir, SUBMISSION_FILE_NAME),
         SUBMISSION_FILE_NAME
@@ -466,7 +464,7 @@ export async function runLogicReverseEngineeringEvaluation(
     await Promise.all(copyOperations);
 
     const execResult = await runCommand(
-      dockerBin,
+      DOCKER_BIN,
       [
         "exec",
         "-i",
@@ -501,7 +499,7 @@ export async function runLogicReverseEngineeringEvaluation(
       judgeFilePath: workspace.judgeFilePath,
     };
   } finally {
-    await stopContainer(dockerBin, containerId);
+    await stopContainer(DOCKER_BIN, containerId);
     await rm(workspace.workspaceDir, { recursive: true, force: true });
   }
 }

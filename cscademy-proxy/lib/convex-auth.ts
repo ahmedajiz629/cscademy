@@ -5,17 +5,15 @@ export type ConvexAuthRole = "admin" | "student" | "service";
 
 type ConvexAuthAlgorithm = "RS256" | "ES256";
 
-const DEFAULT_CONVEX_AUTH_ALGORITHM: ConvexAuthAlgorithm = "RS256";
-const DEFAULT_CONVEX_AUTH_ISSUER = "https://ajiz-tech-challenge.invalid/convex";
-const DEFAULT_CONVEX_AUTH_AUDIENCE = "ajiz-tech-challenge";
+const CONVEX_AUTH_ALGORITHM: ConvexAuthAlgorithm = "RS256";
+const CONVEX_AUTH_ISSUER = "https://ajiz-tech-challenge.invalid/convex";
+const CONVEX_AUTH_AUDIENCE = "ajiz-tech-challenge";
 
 function normalizeMultilineEnv(value: string) {
   return value.replace(/\\n/g, "\n").trim();
 }
 
-function getRequiredEnv(
-  name: "CONVEX_AUTH_JWKS" | "CONVEX_AUTH_PRIVATE_KEY"
-) {
+function getRequiredEnv(name: "CONVEX_AUTH_JWKS" | "CONVEX_AUTH_PRIVATE_KEY") {
   const value = process.env[name]?.trim();
 
   if (!value) {
@@ -23,20 +21,6 @@ function getRequiredEnv(
   }
 
   return value;
-}
-
-function getAlgorithm(): ConvexAuthAlgorithm {
-  return process.env.CONVEX_AUTH_ALGORITHM === "ES256"
-    ? "ES256"
-    : DEFAULT_CONVEX_AUTH_ALGORITHM;
-}
-
-function getIssuer() {
-  return process.env.CONVEX_AUTH_ISSUER || DEFAULT_CONVEX_AUTH_ISSUER;
-}
-
-function getAudience() {
-  return process.env.CONVEX_AUTH_AUDIENCE || DEFAULT_CONVEX_AUTH_AUDIENCE;
 }
 
 function decodeJwksJson() {
@@ -75,7 +59,7 @@ async function getPrivateKey() {
 
     privateKeyPromise = importPKCS8(
       normalizeMultilineEnv(privateKeyPem),
-      getAlgorithm()
+      CONVEX_AUTH_ALGORITHM
     );
   }
 
@@ -89,13 +73,13 @@ async function signConvexToken(
 ) {
   return new SignJWT(claims)
     .setProtectedHeader({
-      alg: getAlgorithm(),
+      alg: CONVEX_AUTH_ALGORITHM,
       typ: "JWT",
       kid: getKeyId(),
     })
     .setSubject(subject)
-    .setIssuer(getIssuer())
-    .setAudience(getAudience())
+    .setIssuer(CONVEX_AUTH_ISSUER)
+    .setAudience(CONVEX_AUTH_AUDIENCE)
     .setIssuedAt()
     .setExpirationTime(expiresIn)
     .sign(await getPrivateKey());

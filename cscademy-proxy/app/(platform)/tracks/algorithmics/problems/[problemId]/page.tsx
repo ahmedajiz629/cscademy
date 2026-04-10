@@ -486,8 +486,6 @@ export default function AlgorithmicsProblemIDEPage() {
       return;
     }
 
-    const gatewayUrl = resolveOfflineGatewayUrlInBrowser(window.location.href);
-
     setIsConnectingOffline(true);
     setOfflineError("");
     offlineStartedRef.current = false;
@@ -498,6 +496,7 @@ export default function AlgorithmicsProblemIDEPage() {
     socketRef.current?.close();
 
     try {
+      const gatewayUrl = resolveOfflineGatewayUrlInBrowser();
       const res = await fetch("/api/offline/problem-entry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
