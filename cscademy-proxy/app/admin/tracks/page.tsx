@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -14,8 +15,8 @@ export default function AdminTracksPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Tracks</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Track list is defined in code. Enable/disable and content (problems,
-            languages) are managed here.
+            Track list is defined in code. Enable or disable tracks here, adjust
+            leaderboard coefficients inline, and use each track page for problem management.
           </p>
         </div>
       </div>
@@ -34,7 +35,7 @@ export default function AdminTracksPage() {
                 Problems
               </th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                Languages
+                Coefficient
               </th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
                 Manage
@@ -56,19 +57,49 @@ function TrackRow({ track }: { track: ReturnType<typeof getAllTracks>[0] }) {
   const problems = useQuery(api.trackProblems.listByTrack, {
     trackSlug: track.id,
   });
-  const languages = useQuery(api.programmingLanguages.listByTrack, {
-    trackSlug: track.id,
-  });
   const settings = useQuery(api.trackSettings.getBySlug, {
     trackSlug: track.id,
   });
   const setActive = useMutation(api.trackSettings.setActive);
+  const setLeaderboardConfig = useMutation(api.trackSettings.setLeaderboardConfig);
+  const [coefficientDraft, setCoefficientDraft] = useState("1");
+  const [isSavingCoefficient, setIsSavingCoefficient] = useState(false);
 
   // Effective active state: DB override → code default
   const isActive =
     settings !== undefined
       ? (settings?.isActive ?? track.isActive)
       : track.isActive;
+  const leaderboardVisible = settings?.leaderboardVisible ?? false;
+  const leaderboardCoefficient = settings?.leaderboardCoefficient ?? 1;
+
+  useEffect(() => {
+    setCoefficientDraft(String(leaderboardCoefficient));
+  }, [leaderboardCoefficient]);
+
+  async function handleSaveCoefficient() {
+    const parsedCoefficient = Number(coefficientDraft);
+    if (!Number.isFinite(parsedCoefficient) || parsedCoefficient < 0) {
+      alert("Track coefficient must be a valid non-negative number.");
+      setCoefficientDraft(String(leaderboardCoefficient));
+      return;
+    }
+
+    setIsSavingCoefficient(true);
+    try {
+      await setLeaderboardConfig({
+        trackSlug: track.id,
+        leaderboardVisible,
+        leaderboardCoefficient: parsedCoefficient,
+        currentIsActive: isActive,
+      });
+    } catch (error: any) {
+      alert(error.message || "Failed to update coefficient.");
+      setCoefficientDraft(String(leaderboardCoefficient));
+    } finally {
+      setIsSavingCoefficient(false);
+    }
+  }
 
   return (
     <tr className="border-b border-gray-800/50 hover:bg-[#111127]/50">
@@ -102,8 +133,32 @@ function TrackRow({ track }: { track: ReturnType<typeof getAllTracks>[0] }) {
       <td className="px-4 py-3 text-sm text-gray-400">
         {problems?.length ?? "–"}
       </td>
-      <td className="px-4 py-3 text-sm text-gray-400">
-        {languages ? languages.length : "–"}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={coefficientDraft}
+            onChange={(event) => setCoefficientDraft(event.target.value)}
+            onBlur={() => {
+              if (coefficientDraft !== String(leaderboardCoefficient) && !isSavingCoefficient) {
+                void handleSaveCoefficient();
+              }
+            }}
+            className="w-24 rounded-lg border border-gray-700 bg-[#111127] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <button
+            onClick={() => void handleSaveCoefficient()}
+            disabled={isSavingCoefficient || coefficientDraft === String(leaderboardCoefficient)}
+            className="rounded-lg border border-gray-700 px-3 py-2 text-xs text-gray-300 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSavingCoefficient ? "Saving..." : "Save"}
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-gray-500">
+          {leaderboardVisible ? "Used in global leaderboard" : "Track leaderboard currently hidden"}
+        </p>
       </td>
       <td className="px-4 py-3 text-right">
         <Link

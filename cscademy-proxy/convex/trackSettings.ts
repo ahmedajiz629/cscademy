@@ -49,8 +49,12 @@ export const setLeaderboardConfig = mutation({
     trackSlug: v.string(),
     leaderboardVisible: v.boolean(),
     leaderboardCoefficient: v.number(),
+    currentIsActive: v.optional(v.boolean()),
   },
-  handler: async (ctx, { trackSlug, leaderboardVisible, leaderboardCoefficient }) => {
+  handler: async (
+    ctx,
+    { trackSlug, leaderboardVisible, leaderboardCoefficient, currentIsActive }
+  ) => {
     const normalizedCoefficient = Number.isFinite(leaderboardCoefficient)
       ? Math.max(0, leaderboardCoefficient)
       : 1;
@@ -70,7 +74,7 @@ export const setLeaderboardConfig = mutation({
 
     return ctx.db.insert("trackSettings", {
       trackSlug,
-      isActive: true,
+      isActive: currentIsActive ?? true,
       leaderboardVisible,
       leaderboardCoefficient: normalizedCoefficient,
     });

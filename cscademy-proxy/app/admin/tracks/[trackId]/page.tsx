@@ -353,6 +353,7 @@ export default function AdminTrackDetailPage() {
         trackSlug: trackId,
         leaderboardVisible: nextVisible ?? trackLeaderboardVisibleDraft,
         leaderboardCoefficient: parsedCoefficient,
+        currentIsActive: isActive,
       });
     } catch (error: any) {
       alert(error.message || "Failed to update leaderboard settings.");
