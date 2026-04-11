@@ -8,6 +8,11 @@ const configuredConvexUrl = process.env.NEXT_PUBLIC_CONVEX_URL?.trim() ?? "";
 
 const convexClients = new Map<string, ConvexReactClient>();
 
+function serializeConvexUrl(url: URL) {
+  const normalizedPath = url.pathname === "/" ? "" : url.pathname.replace(/\/+$/, "");
+  return `${url.origin}${normalizedPath}${url.search}${url.hash}`;
+}
+
 function resolveBrowserConvexUrl(): string | null {
   if (!configuredConvexUrl) {
     return null;
@@ -26,14 +31,14 @@ function resolveBrowserConvexUrl(): string | null {
         resolvedUrl.pathname !== "");
 
     if (!shouldUseCurrentOrigin) {
-      return resolvedUrl.toString();
+      return serializeConvexUrl(resolvedUrl);
     }
 
     const originBoundUrl = new URL(window.location.origin);
     originBoundUrl.pathname = resolvedUrl.pathname;
     originBoundUrl.search = resolvedUrl.search;
     originBoundUrl.hash = resolvedUrl.hash;
-    return originBoundUrl.toString();
+    return serializeConvexUrl(originBoundUrl);
   } catch {
     return configuredConvexUrl;
   }

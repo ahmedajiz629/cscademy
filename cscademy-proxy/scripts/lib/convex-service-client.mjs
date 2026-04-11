@@ -35,6 +35,15 @@ function decodeEnvValue(rawValue) {
   return trimmed;
 }
 
+function unwrapQuotedEnv(value) {
+  const trimmed = value.trim();
+
+  return (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ? trimmed.slice(1, -1)
+    : trimmed;
+}
+
 function loadEnvFile(filePath) {
   if (!existsSync(filePath)) {
     return;
@@ -86,12 +95,7 @@ export function ensureScriptEnvLoaded() {
 }
 
 function normalizeMultilineEnv(value) {
-  const trimmed = value.trim();
-  const unwrapped =
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-      ? trimmed.slice(1, -1)
-      : trimmed;
+  const unwrapped = unwrapQuotedEnv(value);
 
   return unwrapped
     .replace(/\\\r?\n/g, "\n")
@@ -116,14 +120,19 @@ function getRequiredEnv(name) {
 }
 
 function normalizeJwksValue(rawJwks) {
-  const trimmed = rawJwks.trim();
+  const unwrapped = unwrapQuotedEnv(rawJwks);
+  const candidates = [unwrapped, unwrapped.replace(/\\"/g, '"')];
 
-  try {
-    const parsed = JSON.parse(trimmed);
-    return typeof parsed === "string" ? parsed : trimmed;
-  } catch {
-    return trimmed;
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+    } catch {
+      continue;
+    }
   }
+
+  return candidates[candidates.length - 1];
 }
 
 export function getConvexUrl() {
@@ -131,7 +140,7 @@ export function getConvexUrl() {
 }
 
 function decodeJwksJson() {
-  const rawJwks = getRequiredEnv("CONVEX_AUTH_JWKS");
+  const rawJwks = unwrapQuotedEnv(getRequiredEnv("CONVEX_AUTH_JWKS"));
 
   if (!rawJwks.startsWith("data:")) {
     return normalizeJwksValue(rawJwks);

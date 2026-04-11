@@ -4,6 +4,15 @@ const CONVEX_AUTH_ALGORITHM = "RS256";
 const CONVEX_AUTH_ISSUER = "https://ajiz-tech-challenge.invalid/convex";
 const CONVEX_AUTH_AUDIENCE = "ajiz-tech-challenge";
 
+function unwrapQuotedEnv(value: string) {
+  const trimmed = value.trim();
+
+  return (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ? trimmed.slice(1, -1)
+    : trimmed;
+}
+
 function getRequiredEnv(name: "CONVEX_AUTH_JWKS") {
   const value = process.env[name]?.trim();
 
@@ -15,18 +24,24 @@ function getRequiredEnv(name: "CONVEX_AUTH_JWKS") {
 }
 
 function normalizeJwksValue(rawJwks: string) {
-  const trimmed = rawJwks.trim();
+  const unwrapped = unwrapQuotedEnv(rawJwks);
 
-  if (trimmed.startsWith("data:")) {
-    return trimmed;
+  if (unwrapped.startsWith("data:")) {
+    return unwrapped;
   }
 
-  try {
-    const parsed = JSON.parse(trimmed);
-    return typeof parsed === "string" ? parsed : trimmed;
-  } catch {
-    return trimmed;
+  const candidates = [unwrapped, unwrapped.replace(/\\"/g, '"')];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return typeof parsed === "string" ? parsed : JSON.stringify(parsed);
+    } catch {
+      continue;
+    }
   }
+
+  return candidates[candidates.length - 1];
 }
 
 function getJwks() {
