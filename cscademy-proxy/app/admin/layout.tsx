@@ -61,7 +61,7 @@ export default function AdminLayout({
         aria-label={sidebarOpen ? "Close admin menu" : "Open admin menu"}
         aria-expanded={sidebarOpen}
         title={sidebarOpen ? "Close menu" : "Open menu"}
-        className="group fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-gray-700 bg-[#111127]/95 text-white shadow-lg shadow-black/30 backdrop-blur transition-colors hover:border-blue-400/50 hover:bg-[#171735]"
+        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-gray-700 bg-[#111127]/95 text-white shadow-lg shadow-black/30 backdrop-blur opacity-10 transition-[opacity,color,border-color,background-color] duration-200 hover:opacity-100 hover:border-blue-400/50 hover:bg-[#171735] focus-visible:opacity-100"
       >
         <span className="sr-only">
           {sidebarOpen ? "Close menu" : "Open menu"}
@@ -70,7 +70,7 @@ export default function AdminLayout({
           <svg
             viewBox="0 0 24 24"
             aria-hidden="true"
-            className="h-5 w-5 opacity-10 transition-opacity duration-200 group-hover:opacity-100"
+            className="h-5 w-5"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
@@ -83,7 +83,7 @@ export default function AdminLayout({
           <svg
             viewBox="0 0 24 24"
             aria-hidden="true"
-            className="h-5 w-5 opacity-10 transition-opacity duration-200 group-hover:opacity-100"
+            className="h-5 w-5"
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
