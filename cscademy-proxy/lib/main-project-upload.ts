@@ -7,10 +7,25 @@ import {
 type CloudinaryResourceType = "image" | "raw" | "video";
 
 type ParsedCloudinaryAssetDescriptor = {
+  deliveryPublicId: string;
   resourceType: CloudinaryResourceType;
   type: string;
   publicId: string;
   format: string;
+  version: string | null;
+};
+
+type CloudinaryFetchAttemptLabel =
+  | "direct"
+  | "signed-delivery"
+  | "api-download";
+
+type CloudinaryFailedFetchAttempt = {
+  bodyPreview?: string | null;
+  error?: string;
+  label: CloudinaryFetchAttemptLabel;
+  status?: number;
+  xCldError?: string | null;
 };
 
 const CLOUDINARY_DELIVERY_ALIASES: Record<
@@ -23,6 +38,18 @@ const CLOUDINARY_DELIVERY_ALIASES: Record<
   private_images: { resourceType: "image", type: "private" },
   videos: { resourceType: "video", type: "upload" },
 };
+
+const CLOUDINARY_RESTRICTED_DELIVERY_FORMATS = new Set([
+  "7z",
+  "bz2",
+  "gz",
+  "pdf",
+  "rar",
+  "tar",
+  "tgz",
+  "xz",
+  "zip",
+]);
 
 function getCloudinaryConfig() {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
@@ -62,6 +89,19 @@ function signCloudinaryParams(
   return createHash("sha1")
     .update(`${serialized}${apiSecret}`)
     .digest("hex");
+}
+
+function buildSignedCloudinaryDeliverySignature(
+  signaturePayload: string,
+  apiSecret: string
+) {
+  return createHash("sha1")
+    .update(`${signaturePayload}${apiSecret}`)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "")
+    .slice(0, 8);
 }
 
 function splitCloudinaryPublicIdAndFormat(identifier: string) {
@@ -142,11 +182,30 @@ function parseConfiguredCloudinaryAssetUrl(
   }
 
   return {
+    deliveryPublicId: publicIdentifier,
     format: publicIdAndFormat.format,
-    publicId: publicIdAndFormat.publicId,
+    publicId:
+      resourceType === "raw" ? publicIdentifier : publicIdAndFormat.publicId,
     resourceType,
     type,
+    version: versionIndex === -1 ? null : segments[versionIndex],
   };
+}
+
+function buildSignedCloudinaryDeliveryUrl(
+  asset: ParsedCloudinaryAssetDescriptor
+) {
+  if (!asset.version) {
+    return null;
+  }
+
+  const { apiSecret, cloudName } = getCloudinaryConfig();
+  const signature = buildSignedCloudinaryDeliverySignature(
+    `${asset.version}/${asset.deliveryPublicId}`,
+    apiSecret
+  );
+
+  return `https://res.cloudinary.com/${cloudName}/${asset.resourceType}/${asset.type}/s--${signature}--/${asset.version}/${asset.deliveryPublicId}`;
 }
 
 function buildSignedCloudinaryDownloadUrl(
@@ -173,6 +232,105 @@ function buildSignedCloudinaryDownloadUrl(
   }
 
   return `https://api.cloudinary.com/v1_1/${cloudName}/${asset.resourceType}/download?${query.toString()}`;
+}
+
+function summarizeCloudinaryResponseText(rawValue: string) {
+  const normalized = rawValue.replace(/\s+/g, " ").trim();
+
+  return normalized ? normalized.slice(0, 200) : null;
+}
+
+async function inspectCloudinaryFetchFailure(
+  label: CloudinaryFetchAttemptLabel,
+  response: Response
+): Promise<CloudinaryFailedFetchAttempt> {
+  let bodyPreview: string | null = null;
+
+  try {
+    bodyPreview = summarizeCloudinaryResponseText(await response.text());
+  } catch {
+    bodyPreview = null;
+  }
+
+  return {
+    bodyPreview,
+    label,
+    status: response.status,
+    xCldError: response.headers.get("x-cld-error"),
+  };
+}
+
+function formatCloudinaryFetchAttempt(attempt: CloudinaryFailedFetchAttempt) {
+  const parts = [attempt.label];
+
+  if (attempt.status !== undefined) {
+    parts.push(String(attempt.status));
+  } else {
+    parts.push("error");
+  }
+
+  const detail = attempt.xCldError || attempt.error || attempt.bodyPreview;
+
+  if (detail) {
+    parts.push(`(${detail})`);
+  }
+
+  return parts.join(" ");
+}
+
+function isCloudinaryRestrictedDeliveryFailure(
+  asset: ParsedCloudinaryAssetDescriptor | null,
+  attempts: CloudinaryFailedFetchAttempt[]
+) {
+  if (!asset) {
+    return false;
+  }
+
+  if (!CLOUDINARY_RESTRICTED_DELIVERY_FORMATS.has(asset.format.toLowerCase())) {
+    return false;
+  }
+
+  return attempts.some((attempt) => {
+    const details = [attempt.xCldError, attempt.bodyPreview, attempt.error]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return (
+      attempt.status === 401 ||
+      attempt.status === 403 ||
+      details.includes("deny or acl") ||
+      details.includes("customer is marked as untrusted") ||
+      details.includes("show_original_customer_untrusted") ||
+      details.includes("blocked for delivery")
+    );
+  });
+}
+
+function buildCloudinaryFetchVerificationError(
+  asset: ParsedCloudinaryAssetDescriptor | null,
+  attempts: CloudinaryFailedFetchAttempt[]
+) {
+  const attemptSummary = attempts.map(formatCloudinaryFetchAttempt).join("; ");
+  const restrictedDelivery = isCloudinaryRestrictedDeliveryFailure(asset, attempts);
+  const error = new Error(
+    restrictedDelivery
+      ? `Cloudinary blocked delivery of the uploaded ${asset?.format.toUpperCase() ?? "file"} while verifying the submission. Enable \"Allow delivery of PDF and ZIP files\" in Cloudinary Product Environment -> Security, wait for any cached 40x responses to clear if needed, and retry the submission. Attempts: ${attemptSummary}`
+      : `Failed to fetch uploaded file from Cloudinary. Attempts: ${attemptSummary}`
+  ) as Error & {
+    details?: {
+      asset: ParsedCloudinaryAssetDescriptor | null;
+      attempts: CloudinaryFailedFetchAttempt[];
+    };
+  };
+
+  error.name = "CloudinaryUploadVerificationError";
+  error.details = {
+    asset,
+    attempts,
+  };
+
+  return error;
 }
 
 async function computeResponseSha256(response: Response) {
@@ -264,28 +422,56 @@ export function isConfiguredCloudinaryAssetUrl(rawValue: string) {
 
 export async function computeRemoteSha256(
   url: string,
-  signedDownloadUrl?: string
+  fallbackUrls: Array<{
+    label: CloudinaryFetchAttemptLabel;
+    url: string;
+  }> = [],
+  cloudinaryAsset: ParsedCloudinaryAssetDescriptor | null = null
 ) {
-  const response = await fetch(url, { cache: "no-store" });
+  const attempts: CloudinaryFailedFetchAttempt[] = [];
 
-  if (response.ok) {
-    return computeResponseSha256(response);
-  }
+  const tryFetch = async (
+    targetUrl: string,
+    label: CloudinaryFetchAttemptLabel
+  ) => {
+    try {
+      const response = await fetch(targetUrl, { cache: "no-store" });
 
-  if (
-    signedDownloadUrl &&
-    (response.status === 401 || response.status === 403)
-  ) {
-    const signedResponse = await fetch(signedDownloadUrl, { cache: "no-store" });
+      if (response.ok) {
+        return await computeResponseSha256(response);
+      }
 
-    if (signedResponse.ok) {
-      return computeResponseSha256(signedResponse);
+      attempts.push(await inspectCloudinaryFetchFailure(label, response));
+      return null;
+    } catch (error) {
+      attempts.push({
+        error: error instanceof Error ? error.message : String(error),
+        label,
+      });
+      return null;
     }
+  };
 
-    throw new Error(`Failed to fetch uploaded file (${signedResponse.status}).`);
+  const directSha256 = await tryFetch(url, "direct");
+
+  if (directSha256) {
+    return directSha256;
   }
 
-  throw new Error(`Failed to fetch uploaded file (${response.status}).`);
+  for (const fallback of fallbackUrls) {
+    const fallbackSha256 = await tryFetch(fallback.url, fallback.label);
+
+    if (fallbackSha256) {
+      return fallbackSha256;
+    }
+  }
+
+  console.warn("[main-project-upload] Cloudinary verification fetch failed", {
+    asset: cloudinaryAsset,
+    attempts,
+  });
+
+  throw buildCloudinaryFetchVerificationError(cloudinaryAsset, attempts);
 }
 
 export async function verifyConfiguredCloudinaryUpload(
@@ -313,12 +499,31 @@ export async function verifyConfiguredCloudinaryUpload(
   }
 
   const cloudinaryAsset = parseConfiguredCloudinaryAssetUrl(url.toString());
-  const signedDownloadUrl = cloudinaryAsset
-    ? buildSignedCloudinaryDownloadUrl(cloudinaryAsset)
-    : undefined;
+  const fallbackUrls = [] as Array<{
+    label: CloudinaryFetchAttemptLabel;
+    url: string;
+  }>;
+
+  if (cloudinaryAsset) {
+    const signedDeliveryUrl = buildSignedCloudinaryDeliveryUrl(cloudinaryAsset);
+
+    if (signedDeliveryUrl) {
+      fallbackUrls.push({
+        label: "signed-delivery",
+        url: signedDeliveryUrl,
+      });
+    }
+
+    fallbackUrls.push({
+      label: "api-download",
+      url: buildSignedCloudinaryDownloadUrl(cloudinaryAsset),
+    });
+  }
+
   const actualSha256 = await computeRemoteSha256(
     url.toString(),
-    signedDownloadUrl
+    fallbackUrls,
+    cloudinaryAsset
   );
 
   if (actualSha256 !== normalizedExpectedHash) {

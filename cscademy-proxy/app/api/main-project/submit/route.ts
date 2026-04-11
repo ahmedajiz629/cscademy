@@ -103,6 +103,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, submissionId });
   } catch (error: any) {
     console.error("[API/main-project/submit] Error:", error);
+
+    if (error?.details) {
+      console.error("[API/main-project/submit] Error details:", error.details);
+    }
+
     return NextResponse.json(
       { error: error.message || "Failed to submit main project depot." },
       { status: 500 }
