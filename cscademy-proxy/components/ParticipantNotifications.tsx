@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import NotificationLink from "@/components/NotificationLink";
 
 function formatDate(timestamp: number) {
   return new Date(timestamp).toLocaleString();
@@ -78,6 +79,15 @@ export default function ParticipantNotifications({
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-current/90">
                     {notification.message}
                   </p>
+                  {notification.linkUrl && (
+                    <div className="mt-3">
+                      <NotificationLink
+                        href={notification.linkUrl}
+                        label={notification.linkLabel}
+                        className="inline-flex items-center rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/90 transition-colors hover:bg-white/10"
+                      />
+                    </div>
+                  )}
                   <p className="mt-3 text-xs text-current/70">
                     {formatDate(notification.createdAt)}
                   </p>

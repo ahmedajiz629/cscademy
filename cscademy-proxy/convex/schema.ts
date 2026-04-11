@@ -1,6 +1,27 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const mainProjectCustomTextFieldValidator = v.object({
+  id: v.string(),
+  label: v.string(),
+  placeholder: v.optional(v.string()),
+  helpText: v.optional(v.string()),
+  required: v.optional(v.boolean()),
+  multiline: v.optional(v.boolean()),
+});
+
+const mainProjectCustomTextFieldValueValidator = v.object({
+  fieldId: v.string(),
+  value: v.string(),
+});
+
+const mainProjectUploadFieldKeyValidator = v.union(
+  v.literal("archive"),
+  v.literal("presentation"),
+  v.literal("report"),
+  v.literal("demoVideo")
+);
+
 export default defineSchema({
   // Platform users (admin & student)
   users: defineTable({
@@ -75,6 +96,47 @@ export default defineSchema({
     encryptedFlag: v.optional(v.string()),
   }).index("by_problemId", ["problemId"]),
 
+  // Main project-only problem settings
+  mainProjectProblemConfigs: defineTable({
+    problemId: v.id("trackProblems"),
+    briefDownloadUrl: v.optional(v.string()),
+    depotOpensAt: v.optional(v.number()),
+    depotClosesAt: v.optional(v.number()),
+    customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
+  }).index("by_problemId", ["problemId"]),
+
+  mainProjectUploadRegistrations: defineTable({
+    userId: v.id("users"),
+    problemId: v.id("trackProblems"),
+    fieldKey: mainProjectUploadFieldKeyValidator,
+    fileName: v.string(),
+    mimeType: v.optional(v.string()),
+    fileSize: v.optional(v.number()),
+    sha256: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_user_problem", ["userId", "problemId"])
+    .index("by_user_problem_field_hash", ["userId", "problemId", "fieldKey", "sha256"]),
+
+  mainProjectSubmissions: defineTable({
+    userId: v.id("users"),
+    problemId: v.id("trackProblems"),
+    archiveUrl: v.string(),
+    archiveHash: v.string(),
+    presentationUrl: v.string(),
+    presentationHash: v.string(),
+    reportUrl: v.string(),
+    reportHash: v.string(),
+    demoType: v.union(v.literal("youtube"), v.literal("upload")),
+    demoUrl: v.string(),
+    demoHash: v.optional(v.string()),
+    customFieldValues: v.array(mainProjectCustomTextFieldValueValidator),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_problem", ["userId", "problemId"])
+    .index("by_problem", ["problemId"]),
+
   // Per-student lifecycle for offline/LAN-gated problems
   offlineProblemSessions: defineTable({
     userId: v.id("users"),
@@ -131,7 +193,8 @@ export default defineSchema({
       v.literal("track_opened"),
       v.literal("track_closed"),
       v.literal("problem_opened"),
-      v.literal("problem_closed")
+      v.literal("problem_closed"),
+      v.literal("depot_opened")
     ),
     level: v.union(
       v.literal("info"),
@@ -145,6 +208,8 @@ export default defineSchema({
     ),
     trackSlug: v.optional(v.string()),
     problemSlug: v.optional(v.string()),
+    linkUrl: v.optional(v.string()),
+    linkLabel: v.optional(v.string()),
     createdAt: v.number(),
     createdByUserId: v.optional(v.id("users")),
   }).index("by_createdAt", ["createdAt"]),

@@ -78,6 +78,8 @@ export const createCustom = mutation({
       v.literal("admin"),
       v.literal("all")
     ),
+    linkUrl: v.optional(v.string()),
+    linkLabel: v.optional(v.string()),
     createdByUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
@@ -89,6 +91,8 @@ export const createCustom = mutation({
       kind: "custom",
       level: args.level,
       targetRole: args.targetRole,
+      linkUrl: args.linkUrl,
+      linkLabel: args.linkLabel,
       createdByUserId: identity.userId ?? args.createdByUserId,
     });
   },

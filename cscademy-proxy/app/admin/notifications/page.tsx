@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import NotificationLink from "@/components/NotificationLink";
 
 function formatDate(timestamp: number) {
   return new Date(timestamp).toLocaleString();
@@ -26,6 +27,8 @@ export default function AdminNotificationsPage() {
 
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
   const [targetRole, setTargetRole] = useState<(typeof audienceOptions)[number]["value"]>(
     "student"
   );
@@ -47,10 +50,14 @@ export default function AdminNotificationsPage() {
         message,
         targetRole,
         level,
+        linkUrl: linkUrl.trim() || undefined,
+        linkLabel: linkLabel.trim() || undefined,
       });
 
       setTitle("");
       setMessage("");
+      setLinkUrl("");
+      setLinkLabel("");
       setTargetRole("student");
       setLevel("info");
     } catch (error: any) {
@@ -133,6 +140,29 @@ export default function AdminNotificationsPage() {
             />
           </div>
 
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Optional Link URL</label>
+            <input
+              value={linkUrl}
+              onChange={(event) => setLinkUrl(event.target.value)}
+              className="w-full px-3 py-2 text-sm bg-[#1a1a2e] border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="/tracks/main-project/problems/example#depot or https://example.com"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Internal paths that start with / use client-side navigation.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Optional Link Label</label>
+            <input
+              value={linkLabel}
+              onChange={(event) => setLinkLabel(event.target.value)}
+              className="w-full px-3 py-2 text-sm bg-[#1a1a2e] border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Open depot"
+            />
+          </div>
+
           <button
             onClick={handleCreateNotification}
             disabled={saving}
@@ -179,6 +209,15 @@ export default function AdminNotificationsPage() {
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-300">
                         {notification.message}
                       </p>
+                      {notification.linkUrl && (
+                        <div className="mt-3">
+                          <NotificationLink
+                            href={notification.linkUrl}
+                            label={notification.linkLabel}
+                            className="inline-flex items-center rounded-lg border border-gray-700 px-3 py-1.5 text-xs font-medium text-blue-300 transition-colors hover:border-blue-400/50 hover:text-blue-200"
+                          />
+                        </div>
+                      )}
                     </div>
                     <span className="text-[10px] uppercase tracking-wide text-gray-500 whitespace-nowrap">
                       {notification.targetRole}

@@ -7,6 +7,7 @@ Ajiz Tech Challenge is a track-based programming challenge platform built with N
 - Track-based challenge delivery with per-problem scoring.
 - Repository-based software engineering challenges evaluated through Docker runners.
 - Logic and reverse engineering challenges that evaluate a submitted string against a downloadable judge source using a configurable Docker image and command.
+- Main project challenges with admin-controlled depot windows, linked notifications, direct third-party uploads, and verified final submissions.
 - Admin tools for users, tracks, languages, and problem configuration.
 - Offline tasks gated by an offline-room live connection.
 - Incident tracking and silent anti-cheat reporting for offline sessions.
@@ -50,6 +51,9 @@ App env (`.env.local` for local development, `.env.server` for the deployed app)
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 - `CSACADEMY_EMAIL`
 - `CSACADEMY_PASSWORD`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
 - optional `DOCKER_HOST` for local Windows Docker setups
 
 Gateway env (`.env.gateway.local` for local development, `.env.gateway` for a deployed gateway host):
@@ -84,6 +88,8 @@ The logic evaluator copies the raw judge source and submission file into the con
 
 External evaluation account credentials are linked per user from the admin interface.
 
+Main project uploads go directly from the browser to Cloudinary. The app only stores the resulting file URLs and verifies their SHA-256 hashes before accepting a final depot submission. Students must register each file hash while the depot is open. If an upload started before closure finishes later, the final submission is still accepted as long as the registered hash matches the uploaded file.
+
 ## Architecture Notes
 
 - App Router handles the web UI and internal API routes.
@@ -94,6 +100,7 @@ External evaluation account credentials are linked per user from the admin inter
 - The algorithmics track currently uses the external judge integration for run and submit actions.
 - The software engineering track evaluates repository branches by running configured Docker images against student submissions.
 - The logic and reverse engineering track evaluates a submitted string by fetching a configured judge URL or public path, copying it into a Docker container, and running a configurable command inside that container.
+- The main project track stores problem-specific depot configuration in Convex and sends notification deep links when a problem or depot opens.
 
 ## Seeding and Tooling
 

@@ -7,6 +7,12 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { getTrack } from "@/lib/tracks";
+import {
+  formatMainProjectDate,
+  getMainProjectDepotStatus,
+  slugifyMainProjectFieldId,
+  type MainProjectCustomTextField,
+} from "@/lib/main-project";
 
 type Problem = {
   _id: Id<"trackProblems">;
@@ -34,6 +40,10 @@ type Problem = {
   starterSubmission?: string;
   downloadableFilePath?: string;
   externalLink?: string;
+  briefDownloadUrl?: string;
+  customTextFields?: MainProjectCustomTextField[];
+  depotOpensAt?: number;
+  depotClosesAt?: number;
   flag?: string;
 };
 
@@ -57,10 +67,32 @@ const EMPTY_FORM = {
   starterSubmission: "",
   downloadableFilePath: "",
   externalLink: "",
+  briefDownloadUrl: "",
+  customTextFields: [] as MainProjectCustomTextField[],
   flag: "",
   isOffline: false,
   offlineTaskPreDescription: "",
 };
+
+function toLocalDateTimeValue(timestamp?: number) {
+  if (!timestamp) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseLocalDateTimeValue(rawValue: string) {
+  const timestamp = new Date(rawValue).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
 
 function parseExtraDockerEnvVars(rawValue?: string | null) {
   const invalidLines: string[] = [];
@@ -101,6 +133,8 @@ export default function AdminTrackDetailPage() {
   const removeProblem = useMutation(api.trackProblems.remove);
   const setProblemActive = useMutation(api.trackProblems.setActive);
   const setProblemLeaderboardVisible = useMutation(api.trackProblems.setLeaderboardVisible);
+  const openMainProjectDepot = useMutation(api.mainProjectSubmissions.openDepot);
+  const closeMainProjectDepot = useMutation(api.mainProjectSubmissions.closeDepotNow);
   const setActive = useMutation(api.trackSettings.setActive);
   const setTrackLeaderboardConfig = useMutation(api.trackSettings.setLeaderboardConfig);
 
@@ -111,12 +145,14 @@ export default function AdminTrackDetailPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Id<"trackProblems"> | null>(null);
   const [trackLeaderboardVisibleDraft, setTrackLeaderboardVisibleDraft] = useState(false);
   const [trackCoefficientDraft, setTrackCoefficientDraft] = useState("1");
+  const [depotCloseAtDraft, setDepotCloseAtDraft] = useState("");
 
   const isSoftwareEngineeringTrack = trackId === "software-engineering";
   const isLogicReverseEngineeringTrack =
     trackId === "logic-reverse-engineering";
   const isCtfTrack = trackId === "ctf";
   const isAlgorithmicsTrack = trackId === "algorithmics";
+  const isMainProjectTrack = trackId === "main-project";
   const isAlgorithmicsImportMode = isAlgorithmicsTrack && mode === "add";
   const canAddProblem =
     !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
@@ -133,6 +169,8 @@ export default function AdminTrackDetailPage() {
         (!!form.judgeFilePath.trim() &&
           !!form.evaluationImage.trim() &&
           !!form.evaluationCommand.trim())) &&
+      (!isMainProjectTrack ||
+        form.customTextFields.every((field) => !!field.label.trim())) &&
       (!isCtfTrack || mode === "edit" || !!form.flag.trim());
 
   const isActive = settings !== undefined
@@ -158,7 +196,9 @@ export default function AdminTrackDetailPage() {
       points: isSoftwareEngineeringTrack ? 20 : EMPTY_FORM.points,
       defaultSubmissionRef: isSoftwareEngineeringTrack ? "challenge" : "",
       starterSubmission: "",
+      customTextFields: [],
     });
+    setDepotCloseAtDraft("");
     setEditingId(null);
     setMode("add");
   }
@@ -184,10 +224,13 @@ export default function AdminTrackDetailPage() {
       starterSubmission: p.starterSubmission ?? "",
       downloadableFilePath: p.downloadableFilePath ?? "",
       externalLink: p.externalLink ?? "",
+      briefDownloadUrl: p.briefDownloadUrl ?? "",
+      customTextFields: (p.customTextFields ?? []).map((field) => ({ ...field })),
       flag: "",
       isOffline: p.isOffline ?? false,
       offlineTaskPreDescription: p.offlineTaskPreDescription ?? "",
     });
+    setDepotCloseAtDraft(toLocalDateTimeValue(p.depotClosesAt));
     setEditingId(p._id);
     setMode("edit");
   }
@@ -195,6 +238,73 @@ export default function AdminTrackDetailPage() {
   function cancelForm() {
     setMode("view");
     setEditingId(null);
+    setDepotCloseAtDraft("");
+  }
+
+  function addMainProjectCustomField() {
+    setForm((current) => ({
+      ...current,
+      customTextFields: [
+        ...current.customTextFields,
+        {
+          id: `field-${crypto.randomUUID().slice(0, 8)}`,
+          label: "",
+          placeholder: "",
+          helpText: "",
+          required: true,
+          multiline: true,
+        },
+      ],
+    }));
+  }
+
+  function updateMainProjectCustomField(
+    fieldId: string,
+    patch: Partial<MainProjectCustomTextField>
+  ) {
+    setForm((current) => ({
+      ...current,
+      customTextFields: current.customTextFields.map((field) =>
+        field.id === fieldId ? { ...field, ...patch } : field
+      ),
+    }));
+  }
+
+  function removeMainProjectCustomField(fieldId: string) {
+    setForm((current) => ({
+      ...current,
+      customTextFields: current.customTextFields.filter((field) => field.id !== fieldId),
+    }));
+  }
+
+  async function handleOpenDepot() {
+    if (!editingId) {
+      return;
+    }
+
+    const closesAt = parseLocalDateTimeValue(depotCloseAtDraft);
+    if (!closesAt || closesAt <= Date.now()) {
+      alert("Depot closing time must be a valid future date and time.");
+      return;
+    }
+
+    try {
+      await openMainProjectDepot({ problemId: editingId, closesAt });
+    } catch (error: any) {
+      alert(error.message || "Failed to open the depot.");
+    }
+  }
+
+  async function handleCloseDepot() {
+    if (!editingId) {
+      return;
+    }
+
+    try {
+      await closeMainProjectDepot({ problemId: editingId });
+    } catch (error: any) {
+      alert(error.message || "Failed to close the depot.");
+    }
   }
 
   async function handleSave() {
@@ -222,6 +332,7 @@ export default function AdminTrackDetailPage() {
       const contestTaskId =
         !isSoftwareEngineeringTrack &&
         !isLogicReverseEngineeringTrack &&
+        !isMainProjectTrack &&
         !isCtfTrack &&
         form.contestTaskId
         ? parseInt(form.contestTaskId)
@@ -257,6 +368,19 @@ export default function AdminTrackDetailPage() {
       const externalLink = isCtfTrack
         ? form.externalLink.trim() || ""
         : undefined;
+      const briefDownloadUrl = isMainProjectTrack
+        ? form.briefDownloadUrl.trim() || ""
+        : undefined;
+      const customTextFields = isMainProjectTrack
+        ? form.customTextFields.map((field) => ({
+            id: slugifyMainProjectFieldId(field.id || field.label),
+            label: field.label.trim(),
+            placeholder: field.placeholder?.trim() || undefined,
+            helpText: field.helpText?.trim() || undefined,
+            required: field.required === true,
+            multiline: field.multiline === true,
+          }))
+        : undefined;
       const flag = isCtfTrack ? form.flag.trim() || undefined : undefined;
       const offlineTaskPreDescription = form.isOffline
         ? form.offlineTaskPreDescription.trim()
@@ -268,6 +392,13 @@ export default function AdminTrackDetailPage() {
           throw new Error(
             `Extra Docker env vars must use KEY=value format, one per line. Invalid lines: ${invalidLines.join(", ")}`
           );
+        }
+      }
+
+      if (isMainProjectTrack) {
+        const emptyLabel = customTextFields?.find((field) => !field.label.trim());
+        if (emptyLabel) {
+          throw new Error("Each main project custom field needs a label.");
         }
       }
 
@@ -312,15 +443,15 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
+          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isMainProjectTrack || isCtfTrack
             ? undefined
             : form.sampleInput || undefined,
-          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
+          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isMainProjectTrack || isCtfTrack
             ? undefined
             : form.sampleOutput || undefined,
           contestTaskId,
           referer:
-            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isMainProjectTrack || isCtfTrack
               ? undefined
               : form.referer || undefined,
           publicRepositoryUrl,
@@ -333,6 +464,8 @@ export default function AdminTrackDetailPage() {
           starterSubmission,
           downloadableFilePath,
           externalLink,
+          briefDownloadUrl,
+          customTextFields,
           isOffline: form.isOffline,
           offlineTaskPreDescription,
         });
@@ -343,15 +476,15 @@ export default function AdminTrackDetailPage() {
           description: form.description.trim(),
           points: Number(form.points),
           order: Number(form.order),
-          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
+          sampleInput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isMainProjectTrack || isCtfTrack
             ? undefined
             : form.sampleInput || undefined,
-          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
+          sampleOutput: isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isMainProjectTrack || isCtfTrack
             ? undefined
             : form.sampleOutput || undefined,
           contestTaskId,
           referer:
-            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isCtfTrack
+            isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack || isMainProjectTrack || isCtfTrack
               ? undefined
               : form.referer || undefined,
           publicRepositoryUrl,
@@ -364,6 +497,8 @@ export default function AdminTrackDetailPage() {
           starterSubmission,
           downloadableFilePath,
           externalLink,
+          briefDownloadUrl,
+          customTextFields,
           isOffline: form.isOffline,
           offlineTaskPreDescription,
         });
@@ -509,6 +644,8 @@ export default function AdminTrackDetailPage() {
             ? "Runtime"
             : isLogicReverseEngineeringTrack
               ? "Judge Runtime"
+              : isMainProjectTrack
+                ? "Depot Workflow"
               : isCtfTrack
                 ? "Challenge Type"
             : `Languages (${languages?.length ?? "…"})`}
@@ -520,6 +657,10 @@ export default function AdminTrackDetailPage() {
         ) : isLogicReverseEngineeringTrack ? (
           <p className="text-sm text-gray-300">
             Students submit a single string expression that is checked by a downloadable judge using the configured Docker image and command.
+          </p>
+        ) : isMainProjectTrack ? (
+          <p className="text-sm text-gray-300">
+            Students work on the project before the depot opens, then upload a verified archive, presentation, report, and either a YouTube link or MP4 demo once the depot window is announced.
           </p>
         ) : isCtfTrack ? (
           <p className="text-sm text-gray-300">
@@ -533,6 +674,8 @@ export default function AdminTrackDetailPage() {
         <p className="text-xs text-gray-600 mt-1">
           {isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? "Docker must be available on the server that runs this app."
+            : isMainProjectTrack
+              ? "Uploads go directly to Cloudinary after the browser registers the file hash with the platform."
             : isCtfTrack
               ? "The flag is stored server-side and is not exposed through the student problem API."
             : "Languages are seeded from the evaluation provider and cannot be edited here."}
@@ -823,6 +966,187 @@ export default function AdminTrackDetailPage() {
                   </p>
                 </div>
               </>
+            ) : isMainProjectTrack ? (
+              <>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">
+                    Brief PDF / Resource URL
+                  </label>
+                  <input
+                    value={form.briefDownloadUrl}
+                    onChange={(e) => setForm({ ...form, briefDownloadUrl: e.target.value })}
+                    className="w-full px-3 py-2 text-sm bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="/briefs/main-project.pdf or https://example.com/main-project.pdf"
+                  />
+                </div>
+
+                <div className="col-span-2 rounded-xl border border-gray-800 bg-[#0d0d1d] p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">Custom Text Fields</h4>
+                      <p className="mt-1 text-xs text-gray-500">
+                        These fields appear in the depot submission form for participants.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addMainProjectCustomField}
+                      className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-colors hover:border-emerald-400/60 hover:text-emerald-100"
+                    >
+                      + Add Field
+                    </button>
+                  </div>
+
+                  {form.customTextFields.length === 0 ? (
+                    <p className="mt-4 text-sm text-gray-500">
+                      No custom fields yet. Add fields such as project name, project summary, or the problem it solves.
+                    </p>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {form.customTextFields.map((field, index) => (
+                        <div key={field.id} className="rounded-lg border border-gray-800 bg-[#08101f] p-4">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Label</label>
+                              <input
+                                value={field.label}
+                                onChange={(e) =>
+                                  updateMainProjectCustomField(field.id, {
+                                    id:
+                                      field.label.trim() && field.id.startsWith("field-")
+                                        ? slugifyMainProjectFieldId(e.target.value)
+                                        : field.id,
+                                    label: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                placeholder={`Field ${index + 1}`}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">Placeholder</label>
+                              <input
+                                value={field.placeholder ?? ""}
+                                onChange={(e) =>
+                                  updateMainProjectCustomField(field.id, {
+                                    placeholder: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                placeholder="Shown inside the participant input"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs text-gray-400 mb-1">Help Text</label>
+                              <input
+                                value={field.helpText ?? ""}
+                                onChange={(e) =>
+                                  updateMainProjectCustomField(field.id, {
+                                    helpText: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                placeholder="Optional guidance shown under the field"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={field.required === true}
+                                  onChange={(e) =>
+                                    updateMainProjectCustomField(field.id, {
+                                      required: e.target.checked,
+                                    })
+                                  }
+                                />
+                                Required
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={field.multiline !== false}
+                                  onChange={(e) =>
+                                    updateMainProjectCustomField(field.id, {
+                                      multiline: e.target.checked,
+                                    })
+                                  }
+                                />
+                                Multiline
+                              </label>
+                              <span className="font-mono text-gray-500">{field.id}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeMainProjectCustomField(field.id)}
+                              className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-300 transition-colors hover:border-red-400/60 hover:text-red-200"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {mode === "edit" && editingId && (
+                  <div className="col-span-2 rounded-xl border border-emerald-500/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(17,24,39,0.45))] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">Depot Window</h4>
+                        <p className="mt-1 text-xs text-gray-300">
+                          Opening the depot sends a notification with a direct link to the participant form.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-black/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-100">
+                        {getMainProjectDepotStatus(
+                          (problems ?? []).find((problem) => problem._id === editingId)?.depotOpensAt,
+                          (problems ?? []).find((problem) => problem._id === editingId)?.depotClosesAt
+                        ).replace("-", " ")}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                      <div>
+                        <label className="block text-xs text-gray-200 mb-1">Closes At</label>
+                        <input
+                          type="datetime-local"
+                          value={depotCloseAtDraft}
+                          onChange={(e) => setDepotCloseAtDraft(e.target.value)}
+                          className="w-full rounded-lg border border-gray-700 bg-[#08101f] px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenDepot()}
+                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                      >
+                        Open / Reopen Depot
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleCloseDepot()}
+                        className="rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-200 transition-colors hover:border-red-400/70 hover:text-red-100"
+                      >
+                        Close Now
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-xs text-gray-200 md:grid-cols-2">
+                      <p>
+                        Opens: {formatMainProjectDate((problems ?? []).find((problem) => problem._id === editingId)?.depotOpensAt)}
+                      </p>
+                      <p>
+                        Closes: {formatMainProjectDate((problems ?? []).find((problem) => problem._id === editingId)?.depotClosesAt)}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="col-span-1">
@@ -908,6 +1232,8 @@ export default function AdminTrackDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
                   {isLogicReverseEngineeringTrack
                     ? "Judge Source"
+                    : isMainProjectTrack
+                      ? "Depot"
                     : isCtfTrack
                       ? "File / Link"
                       : "Task ID"}
@@ -941,6 +1267,8 @@ export default function AdminTrackDetailPage() {
                   <td className="px-4 py-3 text-sm text-gray-400 font-mono break-all">
                     {isLogicReverseEngineeringTrack
                       ? p.judgeFilePath ?? "—"
+                      : isMainProjectTrack
+                        ? `${getMainProjectDepotStatus(p.depotOpensAt, p.depotClosesAt)}${p.depotClosesAt ? ` · ${formatMainProjectDate(p.depotClosesAt)}` : ""}`
                       : isCtfTrack
                         ? p.downloadableFilePath || p.externalLink || "—"
                       : p.contestTaskId ?? "—"}

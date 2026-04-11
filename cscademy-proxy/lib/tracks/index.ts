@@ -2,6 +2,7 @@ import type { TrackModule } from "./types";
 import algorithmics from "./algorithmics";
 import ctf from "./ctf";
 import logicReverseEngineering from "./logic-reverse-engineering";
+import mainProject from "./main-project";
 import softwareEngineering from "./software-engineering";
 
 /** All registered track modules */
@@ -10,6 +11,7 @@ const ALL_TRACKS: TrackModule[] = [
   softwareEngineering,
   logicReverseEngineering,
   ctf,
+  mainProject,
 ];
 
 /** Map for O(1) lookup */

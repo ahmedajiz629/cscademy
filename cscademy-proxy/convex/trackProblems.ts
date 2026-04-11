@@ -4,6 +4,15 @@ import { v } from "convex/values";
 import { requireAdminOrService, requireService } from "./auth";
 import { insertProblemAvailabilityNotification } from "./notificationHelpers";
 
+const mainProjectCustomTextFieldValidator = v.object({
+  id: v.string(),
+  label: v.string(),
+  placeholder: v.optional(v.string()),
+  helpText: v.optional(v.string()),
+  required: v.optional(v.boolean()),
+  multiline: v.optional(v.boolean()),
+});
+
 type BaseProblem = Doc<"trackProblems">;
 
 function cleanFields(fields: Record<string, unknown>) {
@@ -85,6 +94,66 @@ function assertSoftwareEngineeringExtraDockerEnvVars(value?: string | null) {
   }
 }
 
+function assertMainProjectCustomTextFields(
+  fields?: Array<{
+    id: string;
+    label: string;
+    placeholder?: string;
+    helpText?: string;
+    required?: boolean;
+    multiline?: boolean;
+  }> | null
+) {
+  if (!fields) {
+    return;
+  }
+
+  const seenIds = new Set<string>();
+
+  for (const field of fields) {
+    const id = field.id.trim();
+    const label = field.label.trim();
+
+    if (!id || !/^[a-z0-9-]+$/i.test(id)) {
+      throw new Error("Main project custom field IDs must be URL-safe strings.");
+    }
+
+    if (!label) {
+      throw new Error("Main project custom fields require a label.");
+    }
+
+    if (seenIds.has(id)) {
+      throw new Error("Main project custom field IDs must be unique.");
+    }
+
+    seenIds.add(id);
+  }
+}
+
+function normalizeMainProjectCustomTextFields(
+  fields?: Array<{
+    id: string;
+    label: string;
+    placeholder?: string;
+    helpText?: string;
+    required?: boolean;
+    multiline?: boolean;
+  }> | null
+) {
+  if (!fields) {
+    return undefined;
+  }
+
+  return fields.map((field) => ({
+    id: field.id.trim(),
+    label: field.label.trim(),
+    placeholder: getTrimmedString(field.placeholder) ?? undefined,
+    helpText: getTrimmedString(field.helpText) ?? undefined,
+    required: field.required === true,
+    multiline: field.multiline === true,
+  }));
+}
+
 async function getAlgorithmicsConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
   const configs = await ctx.db
     .query("algorithmicsProblemConfigs")
@@ -121,6 +190,18 @@ async function getLogicReverseEngineeringConfigByProblemId(
 async function getCtfConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
   const configs = await ctx.db
     .query("ctfProblemConfigs")
+    .withIndex("by_problemId", (queryRef: any) => queryRef.eq("problemId", problemId))
+    .collect();
+
+  return configs[0] || null;
+}
+
+async function getMainProjectConfigByProblemId(
+  ctx: any,
+  problemId: Id<"trackProblems">
+) {
+  const configs = await ctx.db
+    .query("mainProjectProblemConfigs")
     .withIndex("by_problemId", (queryRef: any) => queryRef.eq("problemId", problemId))
     .collect();
 
@@ -257,6 +338,44 @@ async function upsertCtfConfig(
   });
 }
 
+async function upsertMainProjectConfig(
+  ctx: any,
+  problemId: Id<"trackProblems">,
+  fields: {
+    briefDownloadUrl?: string;
+    customTextFields?: Array<{
+      id: string;
+      label: string;
+      placeholder?: string;
+      helpText?: string;
+      required?: boolean;
+      multiline?: boolean;
+    }>;
+  }
+) {
+  const existingConfig = await getMainProjectConfigByProblemId(ctx, problemId);
+  const cleanConfig = cleanFields({
+    briefDownloadUrl: fields.briefDownloadUrl,
+    customTextFields: normalizeMainProjectCustomTextFields(fields.customTextFields),
+  });
+
+  if (existingConfig) {
+    if (Object.keys(cleanConfig).length > 0) {
+      await ctx.db.patch(existingConfig._id, cleanConfig);
+    }
+    return;
+  }
+
+  if (Object.keys(cleanConfig).length === 0) {
+    return;
+  }
+
+  await ctx.db.insert("mainProjectProblemConfigs", {
+    problemId,
+    ...cleanConfig,
+  });
+}
+
 async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
   if (problem.trackSlug === "algorithmics") {
     const config = await getAlgorithmicsConfigByProblemId(ctx, problem._id);
@@ -287,6 +406,14 @@ async function deleteTrackSpecificConfig(ctx: any, problem: BaseProblem) {
     if (config) {
       await ctx.db.delete(config._id);
     }
+    return;
+  }
+
+  if (problem.trackSlug === "main-project") {
+    const config = await getMainProjectConfigByProblemId(ctx, problem._id);
+    if (config) {
+      await ctx.db.delete(config._id);
+    }
   }
 }
 
@@ -312,6 +439,19 @@ async function mergeProblemWithConfig(
     starterSubmission: undefined as string | undefined,
     downloadableFilePath: undefined as string | undefined,
     externalLink: undefined as string | undefined,
+    briefDownloadUrl: undefined as string | undefined,
+    customTextFields: undefined as
+      | Array<{
+          id: string;
+          label: string;
+          placeholder?: string;
+          helpText?: string;
+          required?: boolean;
+          multiline?: boolean;
+        }>
+      | undefined,
+    depotOpensAt: undefined as number | undefined,
+    depotClosesAt: undefined as number | undefined,
     isOffline: problem.isOffline ?? false,
     offlineTaskPreDescription: problem.offlineTaskPreDescription,
     leaderboardVisible: problem.leaderboardVisible ?? false,
@@ -365,6 +505,18 @@ async function mergeProblemWithConfig(
       ...sharedShape,
       downloadableFilePath: config?.downloadableFilePath,
       externalLink: config?.externalLink,
+    };
+  }
+
+  if (problem.trackSlug === "main-project") {
+    const config = await getMainProjectConfigByProblemId(ctx, problem._id);
+
+    return {
+      ...sharedShape,
+      briefDownloadUrl: config?.briefDownloadUrl,
+      customTextFields: config?.customTextFields,
+      depotOpensAt: config?.depotOpensAt,
+      depotClosesAt: config?.depotClosesAt,
     };
   }
 
@@ -511,6 +663,8 @@ export const create = mutation({
     downloadableFilePath: v.optional(v.string()),
     externalLink: v.optional(v.string()),
     flagHash: v.optional(v.string()),
+    briefDownloadUrl: v.optional(v.string()),
+    customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
     isOffline: v.optional(v.boolean()),
     offlineTaskPreDescription: v.optional(v.string()),
     leaderboardVisible: v.optional(v.boolean()),
@@ -539,6 +693,10 @@ export const create = mutation({
 
     if (args.trackSlug === "ctf" && !args.flagHash?.trim()) {
       throw new Error("CTF flag hash is required.");
+    }
+
+    if (args.trackSlug === "main-project") {
+      assertMainProjectCustomTextFields(args.customTextFields);
     }
 
     const problemId = await ctx.db.insert("trackProblems", {
@@ -590,6 +748,23 @@ export const create = mutation({
       });
     }
 
+    if (args.trackSlug === "main-project") {
+      await upsertMainProjectConfig(ctx, problemId, {
+        briefDownloadUrl: args.briefDownloadUrl,
+        customTextFields: args.customTextFields,
+      });
+    }
+
+    await insertProblemAvailabilityNotification(
+      ctx,
+      {
+        trackSlug: args.trackSlug,
+        slug: args.slug,
+        name: args.name,
+      },
+      true
+    );
+
     return problemId;
   },
 });
@@ -617,6 +792,8 @@ export const update = mutation({
     downloadableFilePath: v.optional(v.string()),
     externalLink: v.optional(v.string()),
     flagHash: v.optional(v.string()),
+    briefDownloadUrl: v.optional(v.string()),
+    customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
     isOffline: v.optional(v.boolean()),
     offlineTaskPreDescription: v.optional(v.string()),
     leaderboardVisible: v.optional(v.boolean()),
@@ -641,6 +818,10 @@ export const update = mutation({
 
     if (problem.trackSlug === "software-engineering") {
       assertSoftwareEngineeringExtraDockerEnvVars(fields.extraDockerEnvVars);
+    }
+
+    if (problem.trackSlug === "main-project") {
+      assertMainProjectCustomTextFields(fields.customTextFields);
     }
 
     const sharedFields = cleanFields({
@@ -691,6 +872,13 @@ export const update = mutation({
         downloadableFilePath: fields.downloadableFilePath,
         externalLink: fields.externalLink,
         flagHash: fields.flagHash,
+      });
+    }
+
+    if (problem.trackSlug === "main-project") {
+      await upsertMainProjectConfig(ctx, id, {
+        briefDownloadUrl: fields.briefDownloadUrl,
+        customTextFields: fields.customTextFields,
       });
     }
   },

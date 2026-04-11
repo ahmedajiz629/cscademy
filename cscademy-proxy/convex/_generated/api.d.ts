@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as csacademyAccounts from "../csacademyAccounts.js";
 import type * as leaderboards from "../leaderboards.js";
+import type * as mainProjectSubmissions from "../mainProjectSubmissions.js";
 import type * as notificationHelpers from "../notificationHelpers.js";
 import type * as notifications from "../notifications.js";
 import type * as offlineProblemSessions from "../offlineProblemSessions.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   csacademyAccounts: typeof csacademyAccounts;
   leaderboards: typeof leaderboards;
+  mainProjectSubmissions: typeof mainProjectSubmissions;
   notificationHelpers: typeof notificationHelpers;
   notifications: typeof notifications;
   offlineProblemSessions: typeof offlineProblemSessions;

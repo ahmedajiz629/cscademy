@@ -11,6 +11,7 @@ function toTrackLabel(trackSlug: string) {
     "software-engineering": "Software Engineering",
     "logic-reverse-engineering": "Logic & Reverse Engineering",
     ctf: "CTF",
+    "main-project": "Main Project",
   };
 
   return labels[trackSlug] ?? trackSlug;
