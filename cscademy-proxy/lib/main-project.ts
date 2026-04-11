@@ -206,6 +206,18 @@ export function formatMainProjectDate(timestamp?: number | null): string {
   return new Date(timestamp).toLocaleString();
 }
 
+export function buildMainProjectSubmissionDownloadHref(
+  submissionId: string,
+  fieldKey: MainProjectUploadFieldKey
+): string {
+  const search = new URLSearchParams({
+    submissionId,
+    fieldKey,
+  });
+
+  return `/api/main-project/uploads/download?${search.toString()}`;
+}
+
 export function fileMatchesMainProjectField(
   fieldKey: MainProjectUploadFieldKey,
   fileName: string,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -15,6 +15,7 @@ export default function AdminLayout({
   const pathname = usePathname();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const user = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (isLoading || user === undefined) {
@@ -53,8 +54,31 @@ export default function AdminLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex">
-      <aside className="w-56 bg-[#111127] border-r border-gray-800 flex flex-col">
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <button
+        type="button"
+        onClick={() => setSidebarOpen((current) => !current)}
+        aria-label={sidebarOpen ? "Close admin menu" : "Open admin menu"}
+        aria-expanded={sidebarOpen}
+        className="fixed left-4 top-4 z-50 rounded-xl border border-gray-700 bg-[#111127]/95 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-black/30 backdrop-blur transition-colors hover:border-blue-400/50 hover:bg-[#171735]"
+      >
+        {sidebarOpen ? "Close menu" : "Open menu"}
+      </button>
+
+      {sidebarOpen ? (
+        <button
+          type="button"
+          aria-label="Close admin menu overlay"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/45 lg:hidden"
+        />
+      ) : null}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-56 flex-col border-r border-gray-800 bg-[#111127] transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="p-4 border-b border-gray-800">
           <Link href="/admin" className="text-lg font-bold text-white">
             Ajiz Tech Challenge <span className="text-xs text-gray-500">Admin</span>
@@ -105,7 +129,13 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main
+        className={`min-h-screen overflow-auto pt-16 lg:pt-0 transition-[padding] duration-200 ${
+          sidebarOpen ? "lg:pl-56" : ""
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }

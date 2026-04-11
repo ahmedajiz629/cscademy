@@ -784,7 +784,7 @@ export default function AdminTrackDetailPage() {
           </p>
         ) : isMainProjectTrack ? (
           <p className="text-sm text-gray-300">
-            Students work on the project before the depot opens, then upload a verified archive, presentation, report, and either a YouTube link or MP4 demo once the depot window is announced.
+            Students prepare their final files in advance, register the exact file hashes while the depot is open, then submit public file links after the depot closes.
           </p>
         ) : isCtfTrack ? (
           <p className="text-sm text-gray-300">
@@ -799,7 +799,7 @@ export default function AdminTrackDetailPage() {
           {isSoftwareEngineeringTrack || isLogicReverseEngineeringTrack
             ? "Docker must be available on the server that runs this app."
             : isMainProjectTrack
-              ? "Uploads go directly to Cloudinary after the browser registers the file hash with the platform."
+              ? "The platform stores file hashes during the depot, validates public links after closure, and serves verified downloads through the app."
             : isCtfTrack
               ? "The flag is stored server-side and is not exposed through the student problem API."
             : "Languages are seeded from the evaluation provider and cannot be edited here."}
@@ -1341,6 +1341,7 @@ export default function AdminTrackDetailPage() {
                 <div className="col-span-2">
                   <MainProjectEvaluationMatrix
                     criteria={editingProblem?.evaluationCriteria ?? []}
+                    inputFields={editingProblem?.customTextFields ?? []}
                     participants={mainProjectAdminSubmissions}
                     problemPoints={editingProblem?.points ?? form.points}
                     disabledReason={

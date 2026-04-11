@@ -7,7 +7,7 @@ Ajiz Tech Challenge is a track-based programming challenge platform built with N
 - Track-based challenge delivery with per-problem scoring.
 - Repository-based software engineering challenges evaluated through Docker runners.
 - Logic and reverse engineering challenges that evaluate a submitted string against a downloadable judge source using a configurable Docker image and command.
-- Main project challenges with admin-controlled depot windows, linked notifications, direct third-party uploads, and verified final submissions.
+- Main project challenges with admin-controlled depot windows, pre-registered file hashes, post-closure public link validation, and verified downloads.
 - Admin tools for users, tracks, languages, and problem configuration.
 - Offline tasks gated by an offline-room live connection.
 - Incident tracking and silent anti-cheat reporting for offline sessions.
@@ -51,9 +51,6 @@ App env (`.env.local` for local development, `.env.server` for the deployed app)
 - `OFFLINE_ANTI_CHEAT_CANARY_IMAGE_URL` for the probe image
 - `CSACADEMY_EMAIL`
 - `CSACADEMY_PASSWORD`
-- `CLOUDINARY_CLOUD_NAME`
-- `CLOUDINARY_API_KEY`
-- `CLOUDINARY_API_SECRET`
 - optional `DOCKER_HOST` for local Windows Docker setups
 
 Gateway env (`.env.gateway.local` for local development, `.env.gateway` for a deployed gateway host):
@@ -88,7 +85,7 @@ The logic evaluator copies the raw judge source and submission file into the con
 
 External evaluation account credentials are linked per user from the admin interface.
 
-Main project uploads go directly from the browser to Cloudinary. The app only stores the resulting file URLs and verifies their SHA-256 hashes before accepting a final depot submission. Students must register each file hash while the depot is open. If an upload started before closure finishes later, the final submission is still accepted as long as the registered hash matches the uploaded file.
+Main project files are hashed in the browser and registered with the platform while the depot is open. After the depot closes, students host those exact files on a public URL, submit the links, and the server verifies each file against the registered SHA-256 hash before accepting the depot submission. Admin and student download links are then served through the app, which re-fetches and re-verifies the file before returning it.
 
 ## Architecture Notes
 

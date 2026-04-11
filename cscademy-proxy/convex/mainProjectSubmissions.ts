@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import {
+  MAIN_PROJECT_UPLOAD_FIELDS,
   MAIN_PROJECT_TRACK_SLUG,
   fileMatchesMainProjectField,
   isSha256Hex,
@@ -15,6 +16,7 @@ import {
 import {
   requireAdminOrService,
   requireIdentity,
+  requireSelfOrAdminOrService,
 } from "./auth";
 import { insertMainProjectDepotOpenedNotification } from "./notificationHelpers";
 
@@ -245,6 +247,144 @@ export const getMineByProblem = query({
         q.eq("userId", userId).eq("problemId", problem._id)
       )
       .first();
+  },
+});
+
+export const listMineRegisteredUploadsByProblem = query({
+  args: { problemSlug: v.string() },
+  handler: async (ctx, { problemSlug }) => {
+    const userId = await requireViewerUserId(ctx);
+    const problem = await getMainProjectProblemBySlug(ctx, problemSlug);
+
+    if (!problem) {
+      return [];
+    }
+
+    const [config, registrations] = await Promise.all([
+      getMainProjectConfigByProblemId(ctx, problem._id),
+      ctx.db
+        .query("mainProjectUploadRegistrations")
+        .withIndex("by_user_problem", (q: any) =>
+          q.eq("userId", userId).eq("problemId", problem._id)
+        )
+        .collect(),
+    ]);
+
+    const closesAt = config?.depotClosesAt ?? null;
+
+    return registrations
+      .map((registration) => ({
+        ...registration,
+        allowed: Boolean(closesAt && registration.createdAt <= closesAt),
+        closesAt,
+        fileSize: registration.fileSize ?? null,
+        mimeType: registration.mimeType ?? null,
+      }))
+      .sort((left, right) => right.createdAt - left.createdAt);
+  },
+});
+
+export const getRegisteredUpload = query({
+  args: {
+    problemSlug: v.string(),
+    fieldKey: uploadFieldKeyValidator,
+    sha256: v.string(),
+  },
+  handler: async (ctx, { problemSlug, fieldKey, sha256 }) => {
+    const userId = await requireViewerUserId(ctx);
+    const problem = await getMainProjectProblemBySlug(ctx, problemSlug);
+
+    if (!problem || !isSha256Hex(sha256)) {
+      return null;
+    }
+
+    const [config, registration] = await Promise.all([
+      getMainProjectConfigByProblemId(ctx, problem._id),
+      ctx.db
+        .query("mainProjectUploadRegistrations")
+        .withIndex("by_user_problem_field_hash", (q: any) =>
+          q
+            .eq("userId", userId)
+            .eq("problemId", problem._id)
+            .eq("fieldKey", fieldKey)
+            .eq("sha256", sha256.trim().toLowerCase())
+        )
+        .first(),
+    ]);
+
+    if (!registration) {
+      return null;
+    }
+
+    const closesAt = config?.depotClosesAt ?? null;
+
+    return {
+      allowed: Boolean(closesAt && registration.createdAt <= closesAt),
+      closesAt,
+      createdAt: registration.createdAt,
+      fieldKey: registration.fieldKey,
+      fileName: registration.fileName,
+      fileSize: registration.fileSize ?? null,
+      mimeType: registration.mimeType ?? null,
+      sha256: registration.sha256,
+    };
+  },
+});
+
+export const getSubmissionDownloadAsset = query({
+  args: {
+    submissionId: v.id("mainProjectSubmissions"),
+    fieldKey: uploadFieldKeyValidator,
+  },
+  handler: async (ctx, { submissionId, fieldKey }) => {
+    const submission = await ctx.db.get(submissionId);
+
+    if (!submission) {
+      return null;
+    }
+
+    await requireSelfOrAdminOrService(ctx, submission.userId);
+
+    let url = "";
+    let sha256 = "";
+
+    if (fieldKey === "archive") {
+      url = submission.archiveUrl;
+      sha256 = submission.archiveHash;
+    } else if (fieldKey === "presentation") {
+      url = submission.presentationUrl;
+      sha256 = submission.presentationHash;
+    } else if (fieldKey === "report") {
+      url = submission.reportUrl;
+      sha256 = submission.reportHash;
+    } else {
+      if (submission.demoType !== "upload" || !submission.demoHash) {
+        return null;
+      }
+
+      url = submission.demoUrl;
+      sha256 = submission.demoHash;
+    }
+
+    const registration = await ctx.db
+      .query("mainProjectUploadRegistrations")
+      .withIndex("by_user_problem_field_hash", (q: any) =>
+        q
+          .eq("userId", submission.userId)
+          .eq("problemId", submission.problemId)
+          .eq("fieldKey", fieldKey)
+          .eq("sha256", sha256)
+      )
+      .first();
+
+    return {
+      fieldKey,
+      fileName: registration?.fileName ?? MAIN_PROJECT_UPLOAD_FIELDS[fieldKey].label,
+      fileSize: registration?.fileSize ?? null,
+      mimeType: registration?.mimeType ?? null,
+      sha256,
+      url,
+    };
   },
 });
 

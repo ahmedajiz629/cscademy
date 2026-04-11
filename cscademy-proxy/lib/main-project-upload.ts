@@ -1,537 +1,295 @@
 import { createHash } from "node:crypto";
-import {
-  isSha256Hex,
-  type MainProjectUploadFieldKey,
-} from "@/lib/main-project";
+import type { LookupAddress } from "node:dns";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { isSha256Hex } from "@/lib/main-project";
 
-type CloudinaryResourceType = "image" | "raw" | "video";
+const REMOTE_FETCH_TIMEOUT_MS = 5 * 60 * 1000;
+const MAX_REDIRECTS = 5;
 
-type ParsedCloudinaryAssetDescriptor = {
-  deliveryPublicId: string;
-  resourceType: CloudinaryResourceType;
-  type: string;
-  publicId: string;
-  format: string;
-  version: string | null;
-};
-
-type CloudinaryFetchAttemptLabel =
-  | "direct"
-  | "signed-delivery"
-  | "api-download";
-
-type CloudinaryFailedFetchAttempt = {
-  bodyPreview?: string | null;
-  error?: string;
-  label: CloudinaryFetchAttemptLabel;
-  status?: number;
-  xCldError?: string | null;
-};
-
-const CLOUDINARY_DELIVERY_ALIASES: Record<
-  string,
-  { resourceType: CloudinaryResourceType; type: string }
-> = {
-  authenticated_images: { resourceType: "image", type: "authenticated" },
-  files: { resourceType: "raw", type: "upload" },
-  images: { resourceType: "image", type: "upload" },
-  private_images: { resourceType: "image", type: "private" },
-  videos: { resourceType: "video", type: "upload" },
-};
-
-const CLOUDINARY_RESTRICTED_DELIVERY_FORMATS = new Set([
-  "7z",
-  "bz2",
-  "gz",
-  "pdf",
-  "rar",
-  "tar",
-  "tgz",
-  "xz",
-  "zip",
-]);
-
-function getCloudinaryConfig() {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-  const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
-  const apiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
-
-  if (!cloudName || !apiKey || !apiSecret) {
-    throw new Error(
-      "CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must be configured."
-    );
-  }
-
-  return { cloudName, apiKey, apiSecret };
-}
-
-function sanitizeSegment(value: string) {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-
-  return normalized || "item";
-}
-
-function signCloudinaryParams(
-  params: Record<string, string | number>,
-  apiSecret: string
-) {
-  const serialized = Object.entries(params)
-    .filter(([, value]) => value !== "" && value !== undefined && value !== null)
-    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("&");
-
-  return createHash("sha1")
-    .update(`${serialized}${apiSecret}`)
-    .digest("hex");
-}
-
-function buildSignedCloudinaryDeliverySignature(
-  signaturePayload: string,
-  apiSecret: string
-) {
-  return createHash("sha1")
-    .update(`${signaturePayload}${apiSecret}`)
-    .digest("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "")
-    .slice(0, 8);
-}
-
-function splitCloudinaryPublicIdAndFormat(identifier: string) {
-  const lastDot = identifier.lastIndexOf(".");
-
-  if (lastDot <= 0 || lastDot === identifier.length - 1) {
-    return null;
-  }
-
-  return {
-    format: identifier.slice(lastDot + 1),
-    publicId: identifier.slice(0, lastDot),
-  };
-}
-
-function parseConfiguredCloudinaryAssetUrl(
-  rawValue: string
-): ParsedCloudinaryAssetDescriptor | null {
-  if (!isConfiguredCloudinaryAssetUrl(rawValue)) {
-    return null;
-  }
-
-  const url = new URL(rawValue);
-  const segments = url.pathname.split("/").filter(Boolean);
-
-  if (segments.length < 4) {
-    return null;
-  }
-
-  const aliasedDescriptor = CLOUDINARY_DELIVERY_ALIASES[segments[1]];
-  let resourceType: CloudinaryResourceType;
-  let type: string;
-  let assetPathStartIndex: number;
-
-  if (aliasedDescriptor) {
-    resourceType = aliasedDescriptor.resourceType;
-    type = aliasedDescriptor.type;
-    assetPathStartIndex = 2;
-  } else {
-    const candidateResourceType = segments[1];
-
-    if (
-      candidateResourceType !== "image" &&
-      candidateResourceType !== "raw" &&
-      candidateResourceType !== "video"
-    ) {
-      return null;
-    }
-
-    if (segments.length < 5) {
-      return null;
-    }
-
-    resourceType = candidateResourceType;
-    type = segments[2];
-    assetPathStartIndex = 3;
-  }
-
-  const versionIndex = segments.findIndex(
-    (segment, index) => index >= assetPathStartIndex && /^v\d+$/.test(segment)
-  );
-  const publicIdSegments =
-    versionIndex === -1
-      ? segments.slice(assetPathStartIndex)
-      : segments.slice(versionIndex + 1);
-
-  if (!publicIdSegments.length) {
-    return null;
-  }
-
-  const publicIdentifier = publicIdSegments
-    .map((segment) => decodeURIComponent(segment))
-    .join("/");
-  const publicIdAndFormat = splitCloudinaryPublicIdAndFormat(publicIdentifier);
-
-  if (!publicIdAndFormat) {
-    return null;
-  }
-
-  return {
-    deliveryPublicId: publicIdentifier,
-    format: publicIdAndFormat.format,
-    publicId:
-      resourceType === "raw" ? publicIdentifier : publicIdAndFormat.publicId,
-    resourceType,
-    type,
-    version: versionIndex === -1 ? null : segments[versionIndex],
-  };
-}
-
-function buildSignedCloudinaryDeliveryUrl(
-  asset: ParsedCloudinaryAssetDescriptor
-) {
-  if (!asset.version) {
-    return null;
-  }
-
-  const { apiSecret, cloudName } = getCloudinaryConfig();
-  const signature = buildSignedCloudinaryDeliverySignature(
-    `${asset.version}/${asset.deliveryPublicId}`,
-    apiSecret
-  );
-
-  return `https://res.cloudinary.com/${cloudName}/${asset.resourceType}/${asset.type}/s--${signature}--/${asset.version}/${asset.deliveryPublicId}`;
-}
-
-function buildSignedCloudinaryDownloadUrl(
-  asset: ParsedCloudinaryAssetDescriptor
-) {
-  const { apiKey, apiSecret, cloudName } = getCloudinaryConfig();
-  const timestamp = Math.floor(Date.now() / 1000);
-  const params = {
-    format: asset.format,
-    public_id: asset.publicId,
-    timestamp,
-    type: asset.type,
-  };
-  const query = new URLSearchParams({
-    api_key: apiKey,
-    format: asset.format,
-    public_id: asset.publicId,
-    signature: signCloudinaryParams(params, apiSecret),
-    timestamp: String(timestamp),
-  });
-
-  if (asset.type) {
-    query.set("type", asset.type);
-  }
-
-  return `https://api.cloudinary.com/v1_1/${cloudName}/${asset.resourceType}/download?${query.toString()}`;
-}
-
-function summarizeCloudinaryResponseText(rawValue: string) {
-  const normalized = rawValue.replace(/\s+/g, " ").trim();
-
-  return normalized ? normalized.slice(0, 200) : null;
-}
-
-async function inspectCloudinaryFetchFailure(
-  label: CloudinaryFetchAttemptLabel,
-  response: Response
-): Promise<CloudinaryFailedFetchAttempt> {
-  let bodyPreview: string | null = null;
-
-  try {
-    bodyPreview = summarizeCloudinaryResponseText(await response.text());
-  } catch {
-    bodyPreview = null;
-  }
-
-  return {
-    bodyPreview,
-    label,
-    status: response.status,
-    xCldError: response.headers.get("x-cld-error"),
-  };
-}
-
-function formatCloudinaryFetchAttempt(attempt: CloudinaryFailedFetchAttempt) {
-  const parts = [attempt.label];
-
-  if (attempt.status !== undefined) {
-    parts.push(String(attempt.status));
-  } else {
-    parts.push("error");
-  }
-
-  const detail = attempt.xCldError || attempt.error || attempt.bodyPreview;
-
-  if (detail) {
-    parts.push(`(${detail})`);
-  }
-
-  return parts.join(" ");
-}
-
-function isCloudinaryRestrictedDeliveryFailure(
-  asset: ParsedCloudinaryAssetDescriptor | null,
-  attempts: CloudinaryFailedFetchAttempt[]
-) {
-  if (!asset) {
-    return false;
-  }
-
-  if (!CLOUDINARY_RESTRICTED_DELIVERY_FORMATS.has(asset.format.toLowerCase())) {
-    return false;
-  }
-
-  return attempts.some((attempt) => {
-    const details = [attempt.xCldError, attempt.bodyPreview, attempt.error]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return (
-      attempt.status === 401 ||
-      attempt.status === 403 ||
-      details.includes("deny or acl") ||
-      details.includes("customer is marked as untrusted") ||
-      details.includes("show_original_customer_untrusted") ||
-      details.includes("blocked for delivery")
-    );
-  });
-}
-
-function buildCloudinaryFetchVerificationError(
-  asset: ParsedCloudinaryAssetDescriptor | null,
-  attempts: CloudinaryFailedFetchAttempt[]
-) {
-  const attemptSummary = attempts.map(formatCloudinaryFetchAttempt).join("; ");
-  const restrictedDelivery = isCloudinaryRestrictedDeliveryFailure(asset, attempts);
-  const error = new Error(
-    restrictedDelivery
-      ? `Cloudinary blocked delivery of the uploaded ${asset?.format.toUpperCase() ?? "file"} while verifying the submission. Enable \"Allow delivery of PDF and ZIP files\" in Cloudinary Product Environment -> Security, wait for any cached 40x responses to clear if needed, and retry the submission. Attempts: ${attemptSummary}`
-      : `Failed to fetch uploaded file from Cloudinary. Attempts: ${attemptSummary}`
-  ) as Error & {
-    details?: {
-      asset: ParsedCloudinaryAssetDescriptor | null;
-      attempts: CloudinaryFailedFetchAttempt[];
-    };
-  };
-
-  error.name = "CloudinaryUploadVerificationError";
-  error.details = {
-    asset,
-    attempts,
-  };
-
-  return error;
-}
-
-async function computeResponseSha256(response: Response) {
-  if (!response.body) {
-    throw new Error("Uploaded file response did not include a readable body.");
-  }
-
-  const hash = createHash("sha256");
-  const reader = response.body.getReader();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    hash.update(value);
-  }
-
-  return hash.digest("hex");
-}
-
-export function buildSignedMainProjectUploadParams({
-  problemSlug,
-  userId,
-  fieldKey,
-  fileName,
-  sha256,
-}: {
-  problemSlug: string;
-  userId: string;
-  fieldKey: MainProjectUploadFieldKey;
-  fileName: string;
+type VerifiedLinkedMainProjectUpload = {
+  body?: Buffer;
+  contentType: string | null;
+  fileSize: number;
   sha256: string;
-}) {
-  if (!isSha256Hex(sha256)) {
-    throw new Error("Invalid upload hash.");
-  }
+  url: string;
+};
 
-  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
-  const timestamp = Math.floor(Date.now() / 1000);
-  const folder = [
-    "ajiz-tech-challenge",
-    "main-project",
-    sanitizeSegment(problemSlug),
-    sanitizeSegment(userId),
-  ].join("/");
-  const publicId = [
-    sanitizeSegment(fieldKey),
-    sanitizeSegment(fileName.replace(/\.[^.]+$/, "")),
-    sha256.slice(0, 16).toLowerCase(),
-  ].join("-");
-  const context = [
-    `fieldKey=${fieldKey}`,
-    `problemSlug=${sanitizeSegment(problemSlug)}`,
-    `userId=${sanitizeSegment(userId)}`,
-    `sha256=${sha256.toLowerCase()}`,
-  ].join("|");
+type VerifyLinkedMainProjectUploadOptions = {
+  expectedFileSize?: number | null;
+  includeBody?: boolean;
+};
 
-  const params = {
-    context,
-    folder,
-    public_id: publicId,
-    timestamp,
-  };
-
-  return {
-    apiKey,
-    cloudName,
-    context,
-    folder,
-    publicId,
-    signature: signCloudinaryParams(params, apiSecret),
-    timestamp,
-    uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
-  };
+function buildTamperedFileError() {
+  return new Error("The linked file URL appears to have been tampered with.");
 }
 
-export function isConfiguredCloudinaryAssetUrl(rawValue: string) {
-  const { cloudName } = getCloudinaryConfig();
-  const url = new URL(rawValue);
+function normalizeLinkedUploadUrl(rawUrl: string) {
+  const trimmed = rawUrl.trim();
 
-  return (
-    url.protocol === "https:" &&
-    url.hostname === "res.cloudinary.com" &&
-    url.pathname.startsWith(`/${cloudName}/`)
-  );
-}
-
-export async function computeRemoteSha256(
-  url: string,
-  fallbackUrls: Array<{
-    label: CloudinaryFetchAttemptLabel;
-    url: string;
-  }> = [],
-  cloudinaryAsset: ParsedCloudinaryAssetDescriptor | null = null
-) {
-  const attempts: CloudinaryFailedFetchAttempt[] = [];
-
-  const tryFetch = async (
-    targetUrl: string,
-    label: CloudinaryFetchAttemptLabel
-  ) => {
-    try {
-      const response = await fetch(targetUrl, { cache: "no-store" });
-
-      if (response.ok) {
-        return await computeResponseSha256(response);
-      }
-
-      attempts.push(await inspectCloudinaryFetchFailure(label, response));
-      return null;
-    } catch (error) {
-      attempts.push({
-        error: error instanceof Error ? error.message : String(error),
-        label,
-      });
-      return null;
-    }
-  };
-
-  const directSha256 = await tryFetch(url, "direct");
-
-  if (directSha256) {
-    return directSha256;
-  }
-
-  for (const fallback of fallbackUrls) {
-    const fallbackSha256 = await tryFetch(fallback.url, fallback.label);
-
-    if (fallbackSha256) {
-      return fallbackSha256;
-    }
-  }
-
-  console.warn("[main-project-upload] Cloudinary verification fetch failed", {
-    asset: cloudinaryAsset,
-    attempts,
-  });
-
-  throw buildCloudinaryFetchVerificationError(cloudinaryAsset, attempts);
-}
-
-export async function verifyConfiguredCloudinaryUpload(
-  rawUrl: string,
-  expectedSha256: string
-) {
-  const normalizedExpectedHash = expectedSha256.trim().toLowerCase();
-
-  if (!isSha256Hex(normalizedExpectedHash)) {
-    throw new Error("Invalid uploaded file hash.");
+  if (!trimmed) {
+    throw new Error("A file URL is required.");
   }
 
   let url: URL;
 
   try {
-    url = new URL(rawUrl.trim());
+    url = new URL(trimmed);
   } catch {
-    throw new Error("Uploaded file URL is invalid.");
+    throw new Error("The file URL is invalid.");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("The file URL must use HTTP or HTTPS.");
+  }
+
+  if (url.username || url.password) {
+    throw new Error("The file URL must not include credentials.");
   }
 
   url.hash = "";
 
-  if (!isConfiguredCloudinaryAssetUrl(url.toString())) {
-    throw new Error("Uploaded file must be hosted on the configured Cloudinary account.");
+  return url;
+}
+
+function isPrivateIpv4Address(ip: string) {
+  const octets = ip.split(".").map((segment) => Number(segment));
+
+  if (octets.length !== 4 || octets.some((segment) => !Number.isInteger(segment))) {
+    return false;
   }
 
-  const cloudinaryAsset = parseConfiguredCloudinaryAssetUrl(url.toString());
-  const fallbackUrls = [] as Array<{
-    label: CloudinaryFetchAttemptLabel;
-    url: string;
-  }>;
+  const [first, second] = octets;
 
-  if (cloudinaryAsset) {
-    const signedDeliveryUrl = buildSignedCloudinaryDeliveryUrl(cloudinaryAsset);
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
 
-    if (signedDeliveryUrl) {
-      fallbackUrls.push({
-        label: "signed-delivery",
-        url: signedDeliveryUrl,
-      });
+function isPrivateIpv6Address(ip: string) {
+  const normalized = ip.toLowerCase().split("%")[0];
+
+  if (normalized === "::" || normalized === "::1") {
+    return true;
+  }
+
+  if (normalized.startsWith("::ffff:")) {
+    return isPrivateIpv4Address(normalized.slice("::ffff:".length));
+  }
+
+  return (
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe80:")
+  );
+}
+
+function isPrivateIpAddress(ip: string) {
+  return isPrivateIpv4Address(ip) || isPrivateIpv6Address(ip);
+}
+
+function isDisallowedHostname(hostname: string) {
+  const normalized = hostname.trim().toLowerCase();
+
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".localdomain") ||
+    normalized.endsWith(".internal")
+  );
+}
+
+async function assertPublicHttpUrl(url: URL) {
+  if (!url.hostname) {
+    throw new Error("The file URL is invalid.");
+  }
+
+  if (isDisallowedHostname(url.hostname)) {
+    throw new Error("The file URL must not point to a local or private host.");
+  }
+
+  if (isIP(url.hostname)) {
+    if (isPrivateIpAddress(url.hostname)) {
+      throw new Error("The file URL must not point to a local or private host.");
     }
 
-    fallbackUrls.push({
-      label: "api-download",
-      url: buildSignedCloudinaryDownloadUrl(cloudinaryAsset),
-    });
+    return;
   }
 
-  const actualSha256 = await computeRemoteSha256(
-    url.toString(),
-    fallbackUrls,
-    cloudinaryAsset
-  );
+  let resolvedAddresses: LookupAddress[];
 
-  if (actualSha256 !== normalizedExpectedHash) {
-    throw new Error("Uploaded file hash verification failed.");
+  try {
+    resolvedAddresses = await lookup(url.hostname, {
+      all: true,
+      verbatim: true,
+    });
+  } catch {
+    throw new Error("Could not resolve the file URL host.");
+  }
+
+  if (!resolvedAddresses.length) {
+    throw new Error("Could not resolve the file URL host.");
+  }
+
+  if (resolvedAddresses.some((entry) => isPrivateIpAddress(entry.address))) {
+    throw new Error("The file URL must not point to a local or private host.");
+  }
+}
+
+async function fetchResolvedResponse(initialUrl: URL) {
+  let currentUrl = new URL(initialUrl.toString());
+
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+    await assertPublicHttpUrl(currentUrl);
+
+    let response: Response;
+
+    try {
+      response = await fetch(currentUrl.toString(), {
+        cache: "no-store",
+        headers: {
+          "accept-encoding": "identity",
+        },
+        redirect: "manual",
+        signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS),
+      });
+    } catch {
+      throw new Error("Failed to fetch the linked file.");
+    }
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+
+      if (!location) {
+        throw new Error("The file URL redirected without a Location header.");
+      }
+
+      currentUrl = new URL(location, currentUrl);
+      currentUrl.hash = "";
+      continue;
+    }
+
+    return {
+      response,
+      url: currentUrl.toString(),
+    };
+  }
+
+  throw new Error("The file URL redirected too many times.");
+}
+
+async function readVerifiedResponse(
+  response: Response,
+  finalUrl: string,
+  options: VerifyLinkedMainProjectUploadOptions
+): Promise<VerifiedLinkedMainProjectUpload> {
+  if (!response.ok) {
+    throw new Error(`Failed to fetch linked file (${response.status}).`);
+  }
+
+  if (!response.body) {
+    throw new Error("The linked file response did not include a readable body.");
+  }
+
+  const hash = createHash("sha256");
+  const reader = response.body.getReader();
+  const bodyChunks: Buffer[] = [];
+  let fileSize = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    fileSize += value.byteLength;
+    hash.update(value);
+
+    if (options.includeBody) {
+      bodyChunks.push(Buffer.from(value));
+    }
+  }
+
+  if (
+    options.expectedFileSize !== undefined &&
+    options.expectedFileSize !== null &&
+    fileSize !== options.expectedFileSize
+  ) {
+    throw buildTamperedFileError();
   }
 
   return {
-    sha256: actualSha256,
-    url: url.toString(),
+    body: options.includeBody ? Buffer.concat(bodyChunks) : undefined,
+    contentType: response.headers.get("content-type"),
+    fileSize,
+    sha256: hash.digest("hex"),
+    url: finalUrl,
+  };
+}
+
+async function verifyLinkedUploadInternal(
+  rawUrl: string,
+  expectedSha256: string,
+  options: VerifyLinkedMainProjectUploadOptions = {}
+) {
+  const normalizedExpectedHash = expectedSha256.trim().toLowerCase();
+
+  if (!isSha256Hex(normalizedExpectedHash)) {
+    throw new Error("Upload hash must be a SHA-256 hex string.");
+  }
+
+  const initialUrl = normalizeLinkedUploadUrl(rawUrl);
+  const { response, url } = await fetchResolvedResponse(initialUrl);
+  const verifiedUpload = await readVerifiedResponse(response, url, options);
+
+  if (verifiedUpload.sha256 !== normalizedExpectedHash) {
+    throw buildTamperedFileError();
+  }
+
+  return verifiedUpload;
+}
+
+export async function verifyLinkedMainProjectUpload(
+  rawUrl: string,
+  expectedSha256: string,
+  options: Omit<VerifyLinkedMainProjectUploadOptions, "includeBody"> = {}
+) {
+  const verifiedUpload = await verifyLinkedUploadInternal(rawUrl, expectedSha256, options);
+
+  return {
+    contentType: verifiedUpload.contentType,
+    fileSize: verifiedUpload.fileSize,
+    sha256: verifiedUpload.sha256,
+    url: verifiedUpload.url,
+  };
+}
+
+export async function downloadVerifiedMainProjectUpload(
+  rawUrl: string,
+  expectedSha256: string,
+  options: Omit<VerifyLinkedMainProjectUploadOptions, "includeBody"> = {}
+) {
+  const verifiedUpload = await verifyLinkedUploadInternal(rawUrl, expectedSha256, {
+    ...options,
+    includeBody: true,
+  });
+
+  if (!verifiedUpload.body) {
+    throw new Error("The linked file could not be prepared for download.");
+  }
+
+  return {
+    body: verifiedUpload.body,
+    contentType: verifiedUpload.contentType,
+    fileSize: verifiedUpload.fileSize,
+    sha256: verifiedUpload.sha256,
+    url: verifiedUpload.url,
   };
 }

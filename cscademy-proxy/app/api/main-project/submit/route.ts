@@ -6,9 +6,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import {
   MAIN_PROJECT_TRACK_SLUG,
   isYouTubeUrl,
+  isSha256Hex,
   type MainProjectCustomTextFieldValue,
+  type MainProjectUploadFieldKey,
 } from "@/lib/main-project";
-import { verifyConfiguredCloudinaryUpload } from "@/lib/main-project-upload";
+import { verifyLinkedMainProjectUpload } from "@/lib/main-project-upload";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,31 @@ function normalizeCustomFieldValues(rawValues: unknown): MainProjectCustomTextFi
     fieldId: String((entry as any)?.fieldId ?? "").trim(),
     value: String((entry as any)?.value ?? "").trim(),
   }));
+}
+
+async function requireRegisteredUpload(
+  convexUser: Awaited<ReturnType<typeof getConvexUserClient>>,
+  problemSlug: string,
+  fieldKey: MainProjectUploadFieldKey,
+  sha256: string
+) {
+  if (!isSha256Hex(sha256)) {
+    throw new Error(`The ${fieldKey} hash must be a SHA-256 hex string.`);
+  }
+
+  const registration = await convexUser.query(api.mainProjectSubmissions.getRegisteredUpload, {
+    fieldKey,
+    problemSlug,
+    sha256: sha256.trim().toLowerCase(),
+  });
+
+  if (!registration?.allowed) {
+    throw new Error(
+      `The ${fieldKey} file must be registered before the depot closes.`
+    );
+  }
+
+  return registration;
 }
 
 export async function POST(req: NextRequest) {
@@ -49,17 +76,52 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Problem not found." }, { status: 404 });
     }
 
-    const archive = await verifyConfiguredCloudinaryUpload(
-      String(body.archiveUrl ?? ""),
+    if (!problem.depotClosesAt || Date.now() <= problem.depotClosesAt) {
+      return NextResponse.json(
+        { error: "Public file links can only be submitted after the depot closes." },
+        { status: 400 }
+      );
+    }
+
+    const archiveRegistration = await requireRegisteredUpload(
+      convexUser,
+      problemSlug,
+      "archive",
       String(body.archiveHash ?? "")
     );
-    const presentation = await verifyConfiguredCloudinaryUpload(
-      String(body.presentationUrl ?? ""),
+    const presentationRegistration = await requireRegisteredUpload(
+      convexUser,
+      problemSlug,
+      "presentation",
       String(body.presentationHash ?? "")
     );
-    const report = await verifyConfiguredCloudinaryUpload(
-      String(body.reportUrl ?? ""),
+    const reportRegistration = await requireRegisteredUpload(
+      convexUser,
+      problemSlug,
+      "report",
       String(body.reportHash ?? "")
+    );
+
+    const archive = await verifyLinkedMainProjectUpload(
+      String(body.archiveUrl ?? ""),
+      archiveRegistration.sha256,
+      {
+        expectedFileSize: archiveRegistration.fileSize,
+      }
+    );
+    const presentation = await verifyLinkedMainProjectUpload(
+      String(body.presentationUrl ?? ""),
+      presentationRegistration.sha256,
+      {
+        expectedFileSize: presentationRegistration.fileSize,
+      }
+    );
+    const report = await verifyLinkedMainProjectUpload(
+      String(body.reportUrl ?? ""),
+      reportRegistration.sha256,
+      {
+        expectedFileSize: reportRegistration.fileSize,
+      }
     );
 
     let demoUrl = String(body.demoUrl ?? "").trim();
@@ -73,9 +135,18 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
-      const demoUpload = await verifyConfiguredCloudinaryUpload(
-        demoUrl,
+      const demoRegistration = await requireRegisteredUpload(
+        convexUser,
+        problemSlug,
+        "demoVideo",
         String(body.demoHash ?? "")
+      );
+      const demoUpload = await verifyLinkedMainProjectUpload(
+        demoUrl,
+        demoRegistration.sha256,
+        {
+          expectedFileSize: demoRegistration.fileSize,
+        }
       );
       demoUrl = demoUpload.url;
       demoHash = demoUpload.sha256;
