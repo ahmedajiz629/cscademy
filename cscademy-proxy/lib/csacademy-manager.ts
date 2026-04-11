@@ -468,19 +468,37 @@ export class CSAcademySession {
               }
               // Normalize field name variants into what our UI expects
               const t: any = { ...(tdata as object) };
-              // time: CSAcademy may use execTime (ms) or time
-              if (t.time === undefined) {
-                if (t.execTime !== undefined) t.time = t.execTime;
-                else if (t.runningTime !== undefined) t.time = t.runningTime;
-                else if (t.executionTime !== undefined) t.time = t.executionTime;
+              // Normalize time — try known field names, then scan for any numeric 'time' key
+              if (t.time == null) {
+                const timeKeys = ['execTime', 'runningTime', 'executionTime', 'cpuTime', 'cpu_time', 'wallTime', 'duration', 'elapsed', 'runtime', 'time_ms', 'timeMs'];
+                for (const k of timeKeys) {
+                  if (t[k] != null) { t.time = t[k]; break; }
+                }
+                if (t.time == null) {
+                  // Last resort: find any field whose name contains 'time' and holds a number
+                  for (const [k, val] of Object.entries(t)) {
+                    if (k !== 'time' && k.toLowerCase().includes('time') && typeof val === 'number') {
+                      t.time = val; break;
+                    }
+                  }
+                }
               }
-              // maxMemory: CSAcademy may use memory (bytes) or maxMemory (bytes)
-              if (t.maxMemory === undefined) {
-                if (t.memory !== undefined) t.maxMemory = t.memory;
-                else if (t.memUsage !== undefined) t.maxMemory = t.memUsage;
+              // Normalize memory — try known field names, then scan
+              if (t.maxMemory == null) {
+                const memKeys = ['memory', 'memUsage', 'memoryUsed', 'mem', 'maxMem', 'peak_memory', 'peakMemory', 'mem_kb', 'memory_kb'];
+                for (const k of memKeys) {
+                  if (t[k] != null) { t.maxMemory = t[k]; break; }
+                }
+                if (t.maxMemory == null) {
+                  for (const [k, val] of Object.entries(t)) {
+                    if (k !== 'maxMemory' && k.toLowerCase().includes('mem') && typeof val === 'number') {
+                      t.maxMemory = val; break;
+                    }
+                  }
+                }
               }
               // checkerScore: may appear as score (0-1 range) without checker prefix
-              if (t.checkerScore === undefined && t.score !== undefined) {
+              if (t.checkerScore == null && t.score != null) {
                 t.checkerScore = t.score;
               }
               this.resultsCache[id].tests.push(t);

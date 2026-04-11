@@ -384,6 +384,7 @@ async function upsertAlgorithmicsConfig(
   fields: {
     sampleInput?: string;
     sampleOutput?: string;
+    sampleTests?: Array<{ input?: string; output?: string }>;
     starterCode?: string;
     contestTaskId?: number;
     referer?: string;
@@ -605,6 +606,7 @@ async function mergeProblemWithConfig(
     ...problem,
     sampleInput: undefined as string | undefined,
     sampleOutput: undefined as string | undefined,
+    sampleTests: undefined as Array<{ input?: string; output?: string }> | undefined,
     starterCode: undefined as string | undefined,
     contestTaskId: undefined as number | undefined,
     referer: undefined as string | undefined,
@@ -651,6 +653,7 @@ async function mergeProblemWithConfig(
       ...sharedShape,
       sampleInput: config?.sampleInput,
       sampleOutput: config?.sampleOutput,
+      sampleTests: config?.sampleTests,
       starterCode: config?.starterCode,
       contestTaskId: config?.contestTaskId,
       referer: config?.referer,
@@ -837,6 +840,7 @@ export const create = mutation({
     order: v.number(),
     sampleInput: v.optional(v.string()),
     sampleOutput: v.optional(v.string()),
+    sampleTests: v.optional(v.array(v.object({ input: v.optional(v.string()), output: v.optional(v.string()) }))),
     starterCode: v.optional(v.string()),
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
@@ -906,6 +910,7 @@ export const create = mutation({
       await upsertAlgorithmicsConfig(ctx, problemId, {
         sampleInput: args.sampleInput,
         sampleOutput: args.sampleOutput,
+        sampleTests: args.sampleTests,
         starterCode: args.starterCode,
         contestTaskId: args.contestTaskId,
         referer: args.referer,
@@ -957,15 +962,21 @@ export const create = mutation({
       }
     }
 
-    await insertProblemAvailabilityNotification(
-      ctx,
-      {
-        trackSlug: args.trackSlug,
-        slug: args.slug,
-        name: args.name,
-      },
-      true
-    );
+    const trackSettingForCreate = await ctx.db
+      .query("trackSettings")
+      .withIndex("by_trackSlug", (q) => q.eq("trackSlug", args.trackSlug))
+      .first();
+    if (trackSettingForCreate?.isActive !== false) {
+      await insertProblemAvailabilityNotification(
+        ctx,
+        {
+          trackSlug: args.trackSlug,
+          slug: args.slug,
+          name: args.name,
+        },
+        true
+      );
+    }
 
     return problemId;
   },
@@ -1149,7 +1160,13 @@ export const setActive = mutation({
     await ctx.db.patch(id, { isActive });
 
     if (previousEffectiveState !== isActive) {
-      await insertProblemAvailabilityNotification(ctx, problem, isActive);
+      const trackSettingForNotif = await ctx.db
+        .query("trackSettings")
+        .withIndex("by_trackSlug", (q) => q.eq("trackSlug", problem.trackSlug))
+        .first();
+      if (trackSettingForNotif?.isActive !== false) {
+        await insertProblemAvailabilityNotification(ctx, problem, isActive);
+      }
     }
   },
 });

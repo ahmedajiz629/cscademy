@@ -49,8 +49,7 @@ type ImportedAlgorithmicsProblem = {
   name: string;
   description: string;
   points: number;
-  sampleInput?: string;
-  sampleOutput?: string;
+  sampleTests: Array<{ input?: string; output?: string }>;
   starterCode: string;
   referer: string;
 };
@@ -346,8 +345,12 @@ export async function importAlgorithmicsProblemFromCsacademy(
     name: contestTask.longName || evalTask.longName,
     description: normalizeStatementMarkup(statementArticle.markup),
     points: Math.round(contestTask.pointsWorth || 100),
-    sampleInput: normalizeSampleText(firstExample?.input),
-    sampleOutput: normalizeSampleText(firstExample?.output),
+    sampleTests: (evalTask.exampleTests || [])
+      .map((ex) => ({
+        input: normalizeSampleText(ex.input),
+        output: normalizeSampleText(ex.output),
+      }))
+      .filter((ex) => ex.input !== undefined || ex.output !== undefined),
     starterCode: buildStarterCode(languages),
     referer: buildContestTaskReferer(contest, contestTask),
   };

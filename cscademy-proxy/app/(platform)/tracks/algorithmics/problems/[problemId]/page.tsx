@@ -34,8 +34,7 @@ interface ProblemDetails {
   name: string;
   description: string;
   points: number;
-  sampleInput?: string;
-  sampleOutput?: string;
+  sampleTests?: Array<{ input?: string; output?: string }>;
   starterCode?: string;
   isOffline?: boolean;
   offlineTaskPreDescription?: string;
@@ -310,7 +309,7 @@ export default function AlgorithmicsProblemIDEPage() {
     ? `${problem.slug}:${problem.starterCode ?? ""}`
     : "";
   const problemInputSeedKey = problem
-    ? `${problem.slug}:${problem.sampleInput ?? ""}`
+    ? `${problem.slug}:${problem.sampleTests?.[0]?.input ?? ""}`
     : "";
 
   const starterCodeMap = useMemo(() => {
@@ -352,8 +351,8 @@ export default function AlgorithmicsProblemIDEPage() {
     }
 
     inputSeedKeyRef.current = problemInputSeedKey;
-    setInput(problem?.sampleInput ?? "");
-  }, [problem?.sampleInput, problemInputSeedKey]);
+    setInput(problem?.sampleTests?.[0]?.input ?? "");
+  }, [problem?.sampleTests, problemInputSeedKey]);
 
   const handleCodeChange = useCallback(
     (nextCode: string) => {
@@ -899,12 +898,12 @@ export default function AlgorithmicsProblemIDEPage() {
           >
             {isRunning ? "Running..." : "Run ▶"}
           </button>
-          {problem.sampleInput && (
+          {problem.sampleTests && problem.sampleTests.length > 0 && problem.sampleTests[0]?.input && (
             <button
-              onClick={() => runCode(problem.sampleInput || "")}
+              onClick={() => runCode(problem.sampleTests![0].input || "")}
               disabled={isRunning || isSubmitting}
               className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 rounded-lg transition-colors"
-              title="Load sample input and run"
+              title="Load first example input and run"
             >
               ▶ Sample
             </button>
@@ -965,26 +964,39 @@ export default function AlgorithmicsProblemIDEPage() {
             </p>
           </div>
 
-          {problem.sampleInput && (
-            <div className="mt-4">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">
-                Sample Input
-              </h4>
-              <pre className="bg-[#1a1a2e] p-2 rounded text-xs text-gray-300 overflow-auto">
-                {problem.sampleInput}
-              </pre>
+          {problem.sampleTests && problem.sampleTests.length > 0 && problem.sampleTests.map((example, idx) => (
+            <div key={idx} className="mt-4">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase">
+                  Example {idx + 1}
+                </h4>
+                <button
+                  onClick={() => runCode(example.input || "")}
+                  disabled={isRunning || isSubmitting}
+                  className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600 transition-colors"
+                  title={`Run with example ${idx + 1} input`}
+                >
+                  ▶ Run
+                </button>
+              </div>
+              {example.input !== undefined && (
+                <div>
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Input</span>
+                  <pre className="bg-[#1a1a2e] p-2 rounded text-xs text-gray-300 overflow-auto mt-0.5">
+                    {example.input}
+                  </pre>
+                </div>
+              )}
+              {example.output !== undefined && (
+                <div className="mt-1">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Output</span>
+                  <pre className="bg-[#1a1a2e] p-2 rounded text-xs text-gray-300 overflow-auto mt-0.5">
+                    {example.output}
+                  </pre>
+                </div>
+              )}
             </div>
-          )}
-          {problem.sampleOutput && (
-            <div className="mt-3">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">
-                Sample Output
-              </h4>
-              <pre className="bg-[#1a1a2e] p-2 rounded text-xs text-gray-300 overflow-auto">
-                {problem.sampleOutput}
-              </pre>
-            </div>
-          )}
+          ))}
         </div>
 
         {/* ── Drag handle: desc ↔ editor ── */}
@@ -1024,12 +1036,12 @@ export default function AlgorithmicsProblemIDEPage() {
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                 Input
               </span>
-              {problem.sampleInput && (
+              {problem.sampleTests && problem.sampleTests.length > 0 && problem.sampleTests[0]?.input && (
                 <button
                   type="button"
-                  onClick={() => setInput(problem.sampleInput || "")}
+                  onClick={() => setInput(problem.sampleTests![0].input || "")}
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                  title="Restore sample input"
+                  title="Load first example input"
                 >
                   ↺ Load Sample
                 </button>

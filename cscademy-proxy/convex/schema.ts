@@ -75,6 +75,7 @@ export default defineSchema({
     problemId: v.id("trackProblems"),
     sampleInput: v.optional(v.string()),
     sampleOutput: v.optional(v.string()),
+    sampleTests: v.optional(v.array(v.object({ input: v.optional(v.string()), output: v.optional(v.string()) }))),
     starterCode: v.optional(v.string()), // JSON Record<langId, code>
     contestTaskId: v.optional(v.number()),
     referer: v.optional(v.string()),
