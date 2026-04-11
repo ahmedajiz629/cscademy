@@ -60,9 +60,40 @@ export default function AdminLayout({
         onClick={() => setSidebarOpen((current) => !current)}
         aria-label={sidebarOpen ? "Close admin menu" : "Open admin menu"}
         aria-expanded={sidebarOpen}
-        className="fixed left-4 top-4 z-50 rounded-xl border border-gray-700 bg-[#111127]/95 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-black/30 backdrop-blur transition-colors hover:border-blue-400/50 hover:bg-[#171735]"
+        title={sidebarOpen ? "Close menu" : "Open menu"}
+        className="group fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-xl border border-gray-700 bg-[#111127]/95 text-white shadow-lg shadow-black/30 backdrop-blur transition-colors hover:border-blue-400/50 hover:bg-[#171735]"
       >
-        {sidebarOpen ? "Close menu" : "Open menu"}
+        <span className="sr-only">
+          {sidebarOpen ? "Close menu" : "Open menu"}
+        </span>
+        {sidebarOpen ? (
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-5 w-5 opacity-10 transition-opacity duration-200 group-hover:opacity-100"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M6 6L18 18" />
+            <path d="M18 6L6 18" />
+          </svg>
+        ) : (
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-5 w-5 opacity-10 transition-opacity duration-200 group-hover:opacity-100"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M5 7H19" />
+            <path d="M5 12H19" />
+            <path d="M5 17H19" />
+          </svg>
+        )}
       </button>
 
       {sidebarOpen ? (
