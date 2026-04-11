@@ -68,7 +68,9 @@ path, for example `https://tech.ajiz.org/convex`, set `CONVEX_URL` to the
 private backend such as `http://127.0.0.1:3210`, and set
 `OFFLINE_GATEWAY_PORT` to the websocket port exposed by the offline room host.
 The app derives the gateway URL from the current request origin and swaps only
-the port.
+the port. The browser Convex client also binds `/convex`-style public URLs to
+the current page origin at runtime, so local reverse proxies such as
+`http://192.168.0.2` do not keep using the baked-in production host.
 
 The Convex auth algorithm, issuer, and audience are fixed in code. Only `CONVEX_AUTH_JWKS` must also be set in the linked Convex deployment environment because [convex/auth.config.ts](convex/auth.config.ts) reads it directly.
 

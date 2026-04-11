@@ -4,15 +4,54 @@ import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { usePathname } from "next/navigation";
 import { ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL!;
+const configuredConvexUrl = process.env.NEXT_PUBLIC_CONVEX_URL?.trim() ?? "";
 
-let convexClient: ConvexReactClient | null = null;
+const convexClients = new Map<string, ConvexReactClient>();
 
-function getConvexClient() {
-  if (!convexClient && convexUrl) {
-    convexClient = new ConvexReactClient(convexUrl);
+function resolveBrowserConvexUrl(): string | null {
+  if (!configuredConvexUrl) {
+    return null;
   }
-  return convexClient;
+
+  if (typeof window === "undefined") {
+    return configuredConvexUrl;
+  }
+
+  try {
+    const resolvedUrl = new URL(configuredConvexUrl, window.location.origin);
+    const shouldUseCurrentOrigin =
+      configuredConvexUrl.startsWith("/") ||
+      (resolvedUrl.origin !== window.location.origin &&
+        resolvedUrl.pathname !== "/" &&
+        resolvedUrl.pathname !== "");
+
+    if (!shouldUseCurrentOrigin) {
+      return resolvedUrl.toString();
+    }
+
+    const originBoundUrl = new URL(window.location.origin);
+    originBoundUrl.pathname = resolvedUrl.pathname;
+    originBoundUrl.search = resolvedUrl.search;
+    originBoundUrl.hash = resolvedUrl.hash;
+    return originBoundUrl.toString();
+  } catch {
+    return configuredConvexUrl;
+  }
+}
+
+function getConvexClient(convexUrl: string | null) {
+  if (!convexUrl) {
+    return null;
+  }
+
+  let client = convexClients.get(convexUrl);
+
+  if (!client) {
+    client = new ConvexReactClient(convexUrl);
+    convexClients.set(convexUrl, client);
+  }
+
+  return client;
 }
 
 function useCookieBackedConvexAuth() {
@@ -77,7 +116,10 @@ function useCookieBackedConvexAuth() {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
-  const client = getConvexClient();
+  const client = useMemo(
+    () => getConvexClient(resolveBrowserConvexUrl()),
+    []
+  );
   const useAuth = useCookieBackedConvexAuth;
 
   // If Convex is not configured, render without provider
