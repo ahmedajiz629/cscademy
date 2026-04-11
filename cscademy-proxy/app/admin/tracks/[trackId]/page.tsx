@@ -477,6 +477,10 @@ export default function AdminTrackDetailPage() {
             coefficient: Number(criterion.coefficient),
           }))
         : undefined;
+      const depotClosesAt =
+        isMainProjectTrack && mode === "edit" && depotCloseAtDraft.trim()
+          ? parseLocalDateTimeValue(depotCloseAtDraft)
+          : undefined;
       const flag = isCtfTrack ? form.flag.trim() || undefined : undefined;
       const offlineTaskPreDescription = form.isOffline
         ? form.offlineTaskPreDescription.trim()
@@ -492,6 +496,10 @@ export default function AdminTrackDetailPage() {
       }
 
       if (isMainProjectTrack) {
+        if (mode === "edit" && depotCloseAtDraft.trim() && depotClosesAt === null) {
+          throw new Error("Depot closing time must be a valid date and time.");
+        }
+
         const emptyLabel = customTextFields?.find((field) => !field.label.trim());
         if (emptyLabel) {
           throw new Error("Each main project custom field needs a label.");
@@ -614,6 +622,7 @@ export default function AdminTrackDetailPage() {
           briefDownloadUrl,
           customTextFields,
           evaluationCriteria,
+          depotClosesAt: depotClosesAt ?? undefined,
           isOffline: form.isOffline,
           offlineTaskPreDescription,
         });

@@ -513,6 +513,7 @@ async function upsertMainProjectConfig(
   problemId: Id<"trackProblems">,
   fields: {
     briefDownloadUrl?: string;
+    depotClosesAt?: number;
     customTextFields?: Array<{
       id: string;
       label: string;
@@ -532,6 +533,7 @@ async function upsertMainProjectConfig(
   const existingConfig = await getMainProjectConfigByProblemId(ctx, problemId);
   const cleanConfig = cleanFields({
     briefDownloadUrl: fields.briefDownloadUrl,
+    depotClosesAt: fields.depotClosesAt,
     customTextFields: normalizeMainProjectCustomTextFields(fields.customTextFields),
     evaluationCriteria: normalizeMainProjectEvaluationCriteria(fields.evaluationCriteria),
   });
@@ -850,6 +852,7 @@ export const create = mutation({
     externalLink: v.optional(v.string()),
     flagHash: v.optional(v.string()),
     briefDownloadUrl: v.optional(v.string()),
+    depotClosesAt: v.optional(v.number()),
     customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
     evaluationCriteria: v.optional(v.array(mainProjectEvaluationCriterionValidator)),
     isOffline: v.optional(v.boolean()),
@@ -992,6 +995,7 @@ export const update = mutation({
     externalLink: v.optional(v.string()),
     flagHash: v.optional(v.string()),
     briefDownloadUrl: v.optional(v.string()),
+    depotClosesAt: v.optional(v.number()),
     customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
     evaluationCriteria: v.optional(v.array(mainProjectEvaluationCriterionValidator)),
     isOffline: v.optional(v.boolean()),
@@ -1079,6 +1083,7 @@ export const update = mutation({
     if (problem.trackSlug === "main-project") {
       await upsertMainProjectConfig(ctx, id, {
         briefDownloadUrl: fields.briefDownloadUrl,
+        depotClosesAt: fields.depotClosesAt,
         customTextFields: fields.customTextFields,
         evaluationCriteria: fields.evaluationCriteria,
       });
