@@ -210,6 +210,40 @@ function triggerRegisteredFileDownload(file: File) {
   }, 1000);
 }
 
+function getUserFacingErrorMessage(error: unknown, fallback: string) {
+  const rawMessage =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message ?? "").trim()
+      : "";
+
+  if (!rawMessage) {
+    return fallback;
+  }
+
+  const compactMessage = rawMessage.replace(/\s+/g, " ").trim();
+  const uncaughtErrorMarker = "Uncaught Error:";
+  const uncaughtErrorIndex = compactMessage.lastIndexOf(uncaughtErrorMarker);
+
+  let candidate =
+    uncaughtErrorIndex >= 0
+      ? compactMessage.slice(uncaughtErrorIndex + uncaughtErrorMarker.length).trim()
+      : compactMessage;
+
+  const stackTraceIndex = candidate.search(/\s+at\s+[^\s]+/i);
+
+  if (stackTraceIndex > 0) {
+    candidate = candidate.slice(0, stackTraceIndex).trim();
+  }
+
+  candidate = candidate.replace(/\s+Called by client$/i, "").trim();
+
+  if (candidate === "The depot is not currently open for uploads.") {
+    return "The depot is not currently open for file registration.";
+  }
+
+  return candidate || fallback;
+}
+
 export default function MainProjectProblemPage() {
   const params = useParams();
   const problemId = params.problemId as string;
@@ -373,6 +407,8 @@ export default function MainProjectProblemPage() {
   );
   const isDepotOpen = depotStatus === "open";
   const isDepotClosed = depotStatus === "closed";
+  const hasRegisteredUploads = allowedRegistrations.length > 0;
+  const showRegistrationPanel = isDepotOpen || hasRegisteredUploads;
   const briefHref = normalizeOptionalResourceHref(problem.briefDownloadUrl);
   const customTextFields = (problem.customTextFields ?? []) as MainProjectCustomTextField[];
 
@@ -528,7 +564,10 @@ export default function MainProjectProblemPage() {
       });
     } catch (error: any) {
       setNotice({
-        text: error?.message || "Failed to register the selected file.",
+        text: getUserFacingErrorMessage(
+          error,
+          "Failed to register the selected file."
+        ),
         tone: "error",
       });
     } finally {
@@ -614,7 +653,10 @@ export default function MainProjectProblemPage() {
         tone: "success",
       });
     } catch (error: any) {
-      const message = error?.message || "The public file URL could not be validated.";
+      const message = getUserFacingErrorMessage(
+        error,
+        "The public file URL could not be validated."
+      );
 
       setValidationByField((current) => ({
         ...current,
@@ -730,7 +772,10 @@ export default function MainProjectProblemPage() {
       });
     } catch (error: any) {
       setNotice({
-        text: error?.message || "The final main-project submission failed.",
+        text: getUserFacingErrorMessage(
+          error,
+          "The final main-project submission failed."
+        ),
         tone: "error",
       });
     } finally {
@@ -761,6 +806,26 @@ export default function MainProjectProblemPage() {
                 className="mt-3 max-w-2xl"
                 content={problem.description}
               />
+              {briefHref ? (
+                <div className="mt-5 rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-4 shadow-[0_12px_32px_rgba(6,182,212,0.08)]">
+                  <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">
+                    Project Brief
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <a
+                      href={briefHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center rounded-xl border border-cyan-400/40 bg-cyan-400/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition-colors hover:border-cyan-300/70 hover:bg-cyan-400/25"
+                    >
+                      Open Brief
+                    </a>
+                    <p className="min-w-0 flex-1 break-all text-xs text-cyan-50/85">
+                      {briefHref}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="min-w-[220px] rounded-2xl border border-cyan-400/25 bg-cyan-400/10 p-4">
               <p className="text-xs uppercase tracking-wide text-cyan-200">
@@ -794,7 +859,7 @@ export default function MainProjectProblemPage() {
           )}
         </section>
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-3">
           <InfoCard
             label="Best Score"
             value={bestScore !== null ? formatScore(bestScore) : "—"}
@@ -807,12 +872,6 @@ export default function MainProjectProblemPage() {
           <InfoCard
             label="Depot Closes"
             value={formatMainProjectDate(problem.depotClosesAt)}
-          />
-          <InfoCard
-            label="Brief"
-            value={briefHref ? "Available" : "Not attached"}
-            hint={briefHref ? "Open the project brief" : undefined}
-            href={briefHref || undefined}
           />
         </section>
 
@@ -832,110 +891,122 @@ export default function MainProjectProblemPage() {
             <StatusPill status={isDepotOpen ? "open" : depotStatus === "closed" ? "closed" : "not-opened"} />
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {REGISTERABLE_UPLOAD_FIELDS.map((fieldKey) => {
-              const field = MAIN_PROJECT_UPLOAD_FIELDS[fieldKey];
-              const fieldRegistrations = registrationsByField[fieldKey];
-              const selectedRegistration = fieldRegistrations.find(
-                (entry) => entry.sha256 === selectedHashes[fieldKey]?.trim().toLowerCase()
-              );
+          {showRegistrationPanel ? (
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              {REGISTERABLE_UPLOAD_FIELDS.map((fieldKey) => {
+                const field = MAIN_PROJECT_UPLOAD_FIELDS[fieldKey];
+                const fieldRegistrations = registrationsByField[fieldKey];
+                const selectedRegistration = fieldRegistrations.find(
+                  (entry) => entry.sha256 === selectedHashes[fieldKey]?.trim().toLowerCase()
+                );
 
-              return (
-                <div
-                  key={fieldKey}
-                  className="rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{field.label}</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Accepted: {field.allowedExtensions.join(", ")}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openFilePicker(fieldKey)}
-                      disabled={!isDepotOpen || pendingRegistrationField !== null}
-                      className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-400/60 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
-                    >
-                      {pendingRegistrationField === fieldKey
-                        ? "Hashing..."
-                        : isDepotOpen
-                          ? "Choose File"
-                          : "Depot Closed"}
-                    </button>
-                    <input
-                      ref={(element) => {
-                        fileInputRefs.current[fieldKey] = element;
-                      }}
-                      type="file"
-                      accept={field.accept}
-                      className="hidden"
-                      onChange={(event) => {
-                        void handleFileSelection(fieldKey, event);
-                      }}
-                    />
-                  </div>
-
-                  <div className="mt-4 rounded-xl border border-gray-800 bg-[#0a1020] p-4 text-sm text-gray-300">
-                    {selectedRegistration ? (
-                      <>
-                        <p className="font-medium text-white">{selectedRegistration.fileName}</p>
-                        <p className="mt-1 text-xs text-gray-400">
-                          {formatBytes(selectedRegistration.fileSize)} • {shortenHash(selectedRegistration.sha256)}
-                        </p>
+                return (
+                  <div
+                    key={fieldKey}
+                    className="rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{field.label}</p>
                         <p className="mt-1 text-xs text-gray-500">
-                          Registered {formatMainProjectDate(selectedRegistration.createdAt)}
+                          Accepted: {field.allowedExtensions.join(", ")}
                         </p>
-                      </>
+                      </div>
+                      {isDepotOpen ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openFilePicker(fieldKey)}
+                            disabled={pendingRegistrationField !== null}
+                            className="rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-400/60 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                          >
+                            {pendingRegistrationField === fieldKey
+                              ? "Hashing..."
+                              : "Choose File"}
+                          </button>
+                          <input
+                            ref={(element) => {
+                              fileInputRefs.current[fieldKey] = element;
+                            }}
+                            type="file"
+                            accept={field.accept}
+                            className="hidden"
+                            onChange={(event) => {
+                              void handleFileSelection(fieldKey, event);
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <span className="rounded-full border border-gray-700 bg-[#10182d] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                          {isDepotClosed ? "Registration Closed" : "Registration Unavailable"}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-gray-800 bg-[#0a1020] p-4 text-sm text-gray-300">
+                      {selectedRegistration ? (
+                        <>
+                          <p className="font-medium text-white">{selectedRegistration.fileName}</p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            {formatBytes(selectedRegistration.fileSize)} • {shortenHash(selectedRegistration.sha256)}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Registered {formatMainProjectDate(selectedRegistration.createdAt)}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-gray-500">
+                          No registered file selected yet.
+                        </p>
+                      )}
+                    </div>
+
+                    {fieldRegistrations.length > 0 ? (
+                      <div className="mt-4 space-y-2">
+                        {fieldRegistrations.map((entry) => {
+                          const isSelected =
+                            selectedHashes[fieldKey]?.trim().toLowerCase() === entry.sha256;
+
+                          return (
+                            <button
+                              key={String(entry._id)}
+                              type="button"
+                              onClick={() => applySelectedRegistration(fieldKey, entry.sha256)}
+                              className={`flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                                isSelected
+                                  ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-50"
+                                  : "border-gray-800 bg-[#0a1020] text-gray-300 hover:border-gray-700 hover:bg-[#10182d]"
+                              }`}
+                            >
+                              <div>
+                                <p className="text-sm font-medium">{entry.fileName}</p>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {formatBytes(entry.fileSize)} • {shortenHash(entry.sha256)}
+                                </p>
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {formatMainProjectDate(entry.createdAt)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     ) : (
-                      <p className="text-gray-500">
-                        No registered file selected yet.
+                      <p className="mt-4 text-xs text-gray-500">
+                        {isDepotClosed
+                          ? "No allowed registration was saved before the depot closed."
+                          : "No file has been registered yet for this slot."}
                       </p>
                     )}
                   </div>
-
-                  {fieldRegistrations.length > 0 ? (
-                    <div className="mt-4 space-y-2">
-                      {fieldRegistrations.map((entry) => {
-                        const isSelected =
-                          selectedHashes[fieldKey]?.trim().toLowerCase() === entry.sha256;
-
-                        return (
-                          <button
-                            key={String(entry._id)}
-                            type="button"
-                            onClick={() => applySelectedRegistration(fieldKey, entry.sha256)}
-                            className={`flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
-                              isSelected
-                                ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-50"
-                                : "border-gray-800 bg-[#0a1020] text-gray-300 hover:border-gray-700 hover:bg-[#10182d]"
-                            }`}
-                          >
-                            <div>
-                              <p className="text-sm font-medium">{entry.fileName}</p>
-                              <p className="mt-1 text-xs text-gray-500">
-                                {formatBytes(entry.fileSize)} • {shortenHash(entry.sha256)}
-                              </p>
-                            </div>
-                            <span className="text-xs text-gray-500">
-                              {formatMainProjectDate(entry.createdAt)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="mt-4 text-xs text-gray-500">
-                      {isDepotClosed
-                        ? "No allowed registration was saved before the depot closed."
-                        : "No file has been registered yet for this slot."}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5 text-sm text-gray-400">
+              File registration will appear here when the depot opens.
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-gray-800 bg-[#111127] p-6">
@@ -954,289 +1025,291 @@ export default function MainProjectProblemPage() {
             <StatusPill status={isDepotClosed ? "closed" : depotStatus} />
           </div>
 
-          <div className="mt-6 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-4">
-            <p className="text-sm font-semibold text-white">Demo Delivery</p>
-            <p className="mt-2 text-sm text-gray-400">
-              Use a YouTube link, or keep the demo as an MP4 and validate it like the other files.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setDemoType("youtube")}
-                className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
-                  demoType === "youtube"
-                    ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-50"
-                    : "border-gray-800 bg-[#111127] text-gray-400 hover:text-white"
-                }`}
-              >
-                YouTube Link
-              </button>
-              <button
-                type="button"
-                onClick={() => setDemoType("upload")}
-                className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
-                  demoType === "upload"
-                    ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-50"
-                    : "border-gray-800 bg-[#111127] text-gray-400 hover:text-white"
-                }`}
-              >
-                MP4 Upload Link
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {REQUIRED_UPLOAD_FIELDS.map((fieldKey) => {
-              const field = MAIN_PROJECT_UPLOAD_FIELDS[fieldKey];
-              const selectedRegistration = registrationsByField[fieldKey].find(
-                (entry) => entry.sha256 === selectedHashes[fieldKey]?.trim().toLowerCase()
-              );
-              const validation = validationByField[fieldKey];
-
-              return (
-                <div
-                  key={fieldKey}
-                  className="rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{field.label}</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Selected hash: {shortenHash(selectedHashes[fieldKey])}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void validateUploadedLink(fieldKey);
-                      }}
-                      disabled={
-                        !isDepotClosed ||
-                        !selectedRegistration ||
-                        pendingValidationField !== null
-                      }
-                      className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-400/60 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
-                    >
-                      {pendingValidationField === fieldKey
-                        ? "Validating..."
-                        : "Validate Link"}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 rounded-xl border border-gray-800 bg-[#0a1020] p-4 text-sm text-gray-300">
-                    {selectedRegistration ? (
-                      <>
-                        <p className="font-medium text-white">{selectedRegistration.fileName}</p>
-                        <p className="mt-1 text-xs text-gray-400">
-                          {formatBytes(selectedRegistration.fileSize)} • {shortenHash(selectedRegistration.sha256)}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-gray-500">
-                        Register this file while the depot is open before you can submit a public link.
-                      </p>
-                    )}
-                  </div>
-
-                  <Field label="Public File URL">
-                    <input
-                      value={linkInputs[fieldKey] ?? ""}
-                      onChange={(event) => updateLinkInput(fieldKey, event.target.value)}
-                      disabled={!isDepotClosed || !selectedRegistration}
-                      placeholder="https://example.com/path/to/file"
-                      className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-[#0b0f1d] disabled:text-gray-500"
-                    />
-                  </Field>
-
-                  <ValidationMessage validation={validation} />
-                </div>
-              );
-            })}
-
-            <div className="rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-white">Demo</p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {demoType === "upload"
-                      ? `Selected hash: ${shortenHash(selectedHashes.demoVideo)}`
-                      : "Provide the public YouTube URL for your demo."}
-                  </p>
-                </div>
-                {demoType === "upload" && (
+          {isDepotClosed ? (
+            <>
+              <div className="mt-6 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-4">
+                <p className="text-sm font-semibold text-white">Demo Delivery</p>
+                <p className="mt-2 text-sm text-gray-400">
+                  Use a YouTube link, or keep the demo as an MP4 and validate it like the other files.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      void validateUploadedLink("demoVideo");
-                    }}
-                    disabled={
-                      !isDepotClosed ||
-                      !registrationsByField.demoVideo.find(
-                        (entry) =>
-                          entry.sha256 === selectedHashes.demoVideo?.trim().toLowerCase()
-                      ) ||
-                      pendingValidationField !== null
-                    }
-                    className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-400/60 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                    onClick={() => setDemoType("youtube")}
+                    className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
+                      demoType === "youtube"
+                        ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-50"
+                        : "border-gray-800 bg-[#111127] text-gray-400 hover:text-white"
+                    }`}
                   >
-                    {pendingValidationField === "demoVideo"
-                      ? "Validating..."
-                      : "Validate Link"}
+                    YouTube Link
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setDemoType("upload")}
+                    className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
+                      demoType === "upload"
+                        ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-50"
+                        : "border-gray-800 bg-[#111127] text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    MP4 Upload Link
+                  </button>
+                </div>
               </div>
 
-              {demoType === "upload" ? (
-                <>
-                  <div className="mt-4 rounded-xl border border-gray-800 bg-[#0a1020] p-4 text-sm text-gray-300">
-                    {registrationsByField.demoVideo.find(
-                      (entry) =>
-                        entry.sha256 === selectedHashes.demoVideo?.trim().toLowerCase()
-                    ) ? (
-                      (() => {
-                        const selectedRegistration = registrationsByField.demoVideo.find(
-                          (entry) =>
-                            entry.sha256 ===
-                            selectedHashes.demoVideo?.trim().toLowerCase()
-                        );
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                {REQUIRED_UPLOAD_FIELDS.map((fieldKey) => {
+                  const field = MAIN_PROJECT_UPLOAD_FIELDS[fieldKey];
+                  const selectedRegistration = registrationsByField[fieldKey].find(
+                    (entry) => entry.sha256 === selectedHashes[fieldKey]?.trim().toLowerCase()
+                  );
+                  const validation = validationByField[fieldKey];
 
-                        if (!selectedRegistration) {
-                          return null;
-                        }
+                  return (
+                    <div
+                      key={fieldKey}
+                      className="rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{field.label}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Selected hash: {shortenHash(selectedHashes[fieldKey])}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void validateUploadedLink(fieldKey);
+                          }}
+                          disabled={!selectedRegistration || pendingValidationField !== null}
+                          className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-400/60 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                        >
+                          {pendingValidationField === fieldKey
+                            ? "Validating..."
+                            : "Validate Link"}
+                        </button>
+                      </div>
 
-                        return (
+                      <div className="mt-4 rounded-xl border border-gray-800 bg-[#0a1020] p-4 text-sm text-gray-300">
+                        {selectedRegistration ? (
                           <>
-                            <p className="font-medium text-white">
-                              {selectedRegistration.fileName}
-                            </p>
+                            <p className="font-medium text-white">{selectedRegistration.fileName}</p>
                             <p className="mt-1 text-xs text-gray-400">
                               {formatBytes(selectedRegistration.fileSize)} • {shortenHash(selectedRegistration.sha256)}
                             </p>
                           </>
-                        );
-                      })()
-                    ) : (
-                      <p className="text-gray-500">
-                        Register the demo MP4 while the depot is open before validating its public link.
+                        ) : (
+                          <p className="text-gray-500">
+                            Register this file while the depot is open before you can submit a public link.
+                          </p>
+                        )}
+                      </div>
+
+                      <Field label="Public File URL">
+                        <input
+                          value={linkInputs[fieldKey] ?? ""}
+                          onChange={(event) => updateLinkInput(fieldKey, event.target.value)}
+                          disabled={!selectedRegistration}
+                          placeholder="https://example.com/path/to/file"
+                          className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-[#0b0f1d] disabled:text-gray-500"
+                        />
+                      </Field>
+
+                      <ValidationMessage validation={validation} />
+                    </div>
+                  );
+                })}
+
+                <div className="rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">Demo</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {demoType === "upload"
+                          ? `Selected hash: ${shortenHash(selectedHashes.demoVideo)}`
+                          : "Provide the public YouTube URL for your demo."}
                       </p>
+                    </div>
+                    {demoType === "upload" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void validateUploadedLink("demoVideo");
+                        }}
+                        disabled={
+                          !registrationsByField.demoVideo.find(
+                            (entry) =>
+                              entry.sha256 === selectedHashes.demoVideo?.trim().toLowerCase()
+                          ) || pendingValidationField !== null
+                        }
+                        className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-400/60 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+                      >
+                        {pendingValidationField === "demoVideo"
+                          ? "Validating..."
+                          : "Validate Link"}
+                      </button>
                     )}
                   </div>
 
-                  <Field label="Public Demo File URL">
-                    <input
-                      value={linkInputs.demoVideo ?? ""}
-                      onChange={(event) => updateLinkInput("demoVideo", event.target.value)}
-                      disabled={
-                        !isDepotClosed ||
-                        !registrationsByField.demoVideo.find(
+                  {demoType === "upload" ? (
+                    <>
+                      <div className="mt-4 rounded-xl border border-gray-800 bg-[#0a1020] p-4 text-sm text-gray-300">
+                        {registrationsByField.demoVideo.find(
                           (entry) =>
                             entry.sha256 === selectedHashes.demoVideo?.trim().toLowerCase()
-                        )
-                      }
-                      placeholder="https://example.com/path/to/demo.mp4"
-                      className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-[#0b0f1d] disabled:text-gray-500"
-                    />
-                  </Field>
+                        ) ? (
+                          (() => {
+                            const selectedRegistration = registrationsByField.demoVideo.find(
+                              (entry) =>
+                                entry.sha256 ===
+                                selectedHashes.demoVideo?.trim().toLowerCase()
+                            );
 
-                  <ValidationMessage validation={validationByField.demoVideo} />
-                </>
-              ) : (
-                <>
-                  <Field label="YouTube URL">
-                    <input
-                      value={linkInputs.demoVideo ?? ""}
-                      onChange={(event) => updateLinkInput("demoVideo", event.target.value)}
-                      disabled={!isDepotClosed}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-[#0b0f1d] disabled:text-gray-500"
-                    />
-                  </Field>
-                  <p
-                    className={`text-xs ${
-                      !linkInputs.demoVideo?.trim()
-                        ? "text-gray-500"
-                        : isYouTubeUrl(linkInputs.demoVideo)
-                          ? "text-emerald-300"
-                          : "text-amber-300"
-                    }`}
-                  >
-                    {!linkInputs.demoVideo?.trim()
-                      ? "Add the public YouTube URL after the depot closes."
-                      : isYouTubeUrl(linkInputs.demoVideo)
-                        ? "This looks like a valid YouTube URL."
-                        : "The final demo link must point to YouTube."}
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
+                            if (!selectedRegistration) {
+                              return null;
+                            }
 
-          {customTextFields.length > 0 && (
-            <div className="mt-6 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5">
-              <h3 className="text-lg font-semibold text-white">Required Inputs</h3>
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                {customTextFields.map((field) => {
-                  const value = customFieldValues[field.id] ?? "";
+                            return (
+                              <>
+                                <p className="font-medium text-white">
+                                  {selectedRegistration.fileName}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-400">
+                                  {formatBytes(selectedRegistration.fileSize)} • {shortenHash(selectedRegistration.sha256)}
+                                </p>
+                              </>
+                            );
+                          })()
+                        ) : (
+                          <p className="text-gray-500">
+                            Register the demo MP4 while the depot is open before validating its public link.
+                          </p>
+                        )}
+                      </div>
 
-                  return (
-                    <Field
-                      key={field.id}
-                      label={`${field.label}${field.required ? " *" : ""}`}
-                    >
-                      {field.multiline ? (
-                        <textarea
-                          value={value}
-                          rows={5}
-                          onChange={(event) => {
-                            setCustomFieldValues((current) => ({
-                              ...current,
-                              [field.id]: event.target.value,
-                            }));
-                          }}
-                          placeholder={field.placeholder || "Enter your response"}
-                          className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none"
-                        />
-                      ) : (
+                      <Field label="Public Demo File URL">
                         <input
-                          value={value}
-                          onChange={(event) => {
-                            setCustomFieldValues((current) => ({
-                              ...current,
-                              [field.id]: event.target.value,
-                            }));
-                          }}
-                          placeholder={field.placeholder || "Enter your response"}
+                          value={linkInputs.demoVideo ?? ""}
+                          onChange={(event) => updateLinkInput("demoVideo", event.target.value)}
+                          disabled={
+                            !registrationsByField.demoVideo.find(
+                              (entry) =>
+                                entry.sha256 === selectedHashes.demoVideo?.trim().toLowerCase()
+                            )
+                          }
+                          placeholder="https://example.com/path/to/demo.mp4"
+                          className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none disabled:cursor-not-allowed disabled:border-gray-800 disabled:bg-[#0b0f1d] disabled:text-gray-500"
+                        />
+                      </Field>
+
+                      <ValidationMessage validation={validationByField.demoVideo} />
+                    </>
+                  ) : (
+                    <>
+                      <Field label="YouTube URL">
+                        <input
+                          value={linkInputs.demoVideo ?? ""}
+                          onChange={(event) => updateLinkInput("demoVideo", event.target.value)}
+                          placeholder="https://www.youtube.com/watch?v=..."
                           className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none"
                         />
-                      )}
-                      {field.helpText ? (
-                        <p className="mt-2 text-xs text-gray-500">{field.helpText}</p>
-                      ) : null}
-                    </Field>
-                  );
-                })}
+                      </Field>
+                      <p
+                        className={`text-xs ${
+                          !linkInputs.demoVideo?.trim()
+                            ? "text-gray-500"
+                            : isYouTubeUrl(linkInputs.demoVideo)
+                              ? "text-emerald-300"
+                              : "text-amber-300"
+                        }`}
+                      >
+                        {!linkInputs.demoVideo?.trim()
+                          ? "Add the public YouTube URL after the depot closes."
+                          : isYouTubeUrl(linkInputs.demoVideo)
+                            ? "This looks like a valid YouTube URL."
+                            : "The final demo link must point to YouTube."}
+                      </p>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {customTextFields.length > 0 && (
+                <div className="mt-6 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5">
+                  <h3 className="text-lg font-semibold text-white">Required Inputs</h3>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    {customTextFields.map((field) => {
+                      const value = customFieldValues[field.id] ?? "";
+
+                      return (
+                        <Field
+                          key={field.id}
+                          label={`${field.label}${field.required ? " *" : ""}`}
+                        >
+                          {field.multiline ? (
+                            <textarea
+                              value={value}
+                              rows={5}
+                              onChange={(event) => {
+                                setCustomFieldValues((current) => ({
+                                  ...current,
+                                  [field.id]: event.target.value,
+                                }));
+                              }}
+                              placeholder={field.placeholder || "Enter your response"}
+                              className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                            />
+                          ) : (
+                            <input
+                              value={value}
+                              onChange={(event) => {
+                                setCustomFieldValues((current) => ({
+                                  ...current,
+                                  [field.id]: event.target.value,
+                                }));
+                              }}
+                              placeholder={field.placeholder || "Enter your response"}
+                              className="w-full rounded-xl border border-gray-700 bg-[#111127] px-4 py-3 text-sm text-white focus:border-cyan-500 focus:outline-none"
+                            />
+                          )}
+                          {field.helpText ? (
+                            <p className="mt-2 text-xs text-gray-500">{field.helpText}</p>
+                          ) : null}
+                        </Field>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5">
+                <div>
+                  <p className="text-sm font-semibold text-white">Final Submission</p>
+                  <p className="mt-1 text-sm text-gray-400">
+                    The platform will re-fetch every public file URL and reject the submission if any file no longer matches its registered hash.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void submitFinalLinks();
+                  }}
+                  disabled={isSubmitting}
+                  className="rounded-xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
+                >
+                  {isSubmitting ? "Submitting..." : "Submit Final Links"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5 text-sm text-gray-400">
+              {isDepotOpen
+                ? "Public link submission will appear here after the depot closes."
+                : "The depot has not closed yet, so the public link form is hidden."}
             </div>
           )}
-
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-800 bg-[#0c0c1d] p-5">
-            <div>
-              <p className="text-sm font-semibold text-white">Final Submission</p>
-              <p className="mt-1 text-sm text-gray-400">
-                The platform will re-fetch every public file URL and reject the submission if any file no longer matches its registered hash.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                void submitFinalLinks();
-              }}
-              disabled={!isDepotClosed || isSubmitting}
-              className="rounded-xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-500"
-            >
-              {isSubmitting ? "Submitting..." : "Submit Final Links"}
-            </button>
-          </div>
         </section>
 
         <section className="rounded-2xl border border-gray-800 bg-[#111127] p-6">

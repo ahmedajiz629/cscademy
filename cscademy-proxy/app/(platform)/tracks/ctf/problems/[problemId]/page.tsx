@@ -126,6 +126,7 @@ export default function CtfProblemPage() {
   const bestScore = scoreRecord?.score ?? null;
   const attempts = scoreRecord?.attempts ?? 0;
   const solved = bestScore === problem.points;
+  const hasAcceptedFlag = solved || result?.status === "passed";
   const canSubmit = submittedFlag.trim().length > 0;
 
   return (
@@ -249,38 +250,49 @@ export default function CtfProblemPage() {
         </section>
 
         <section className="min-w-0 space-y-6">
-          <div className="rounded-2xl border border-gray-800 bg-[#111127] p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-white">Flag Submission</h2>
-                <p className="mt-2 text-sm text-gray-400">
-                  Submit the exact flag. Matching is case-sensitive apart from trimmed outer whitespace.
-                </p>
+          {hasAcceptedFlag ? (
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-6">
+              <h2 className="text-lg font-semibold text-emerald-100">Flag Accepted</h2>
+              <p className="mt-2 text-sm text-emerald-100/80">
+                {solved
+                  ? "This challenge is already solved for your account, so the flag form is hidden."
+                  : "The submitted flag was accepted, so the flag form is hidden."}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-800 bg-[#111127] p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Flag Submission</h2>
+                  <p className="mt-2 text-sm text-gray-400">
+                    Submit the exact flag. Matching is case-sensitive apart from trimmed outer whitespace.
+                  </p>
+                </div>
+                <button
+                  onClick={submitFlag}
+                  disabled={!canSubmit || isSubmitting}
+                  className="rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:bg-gray-700 disabled:text-gray-500"
+                >
+                  {isSubmitting ? "Checking Flag..." : "Submit Flag"}
+                </button>
               </div>
-              <button
-                onClick={submitFlag}
-                disabled={!canSubmit || isSubmitting}
-                className="rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:bg-gray-700 disabled:text-gray-500"
-              >
-                {isSubmitting ? "Checking Flag..." : "Submit Flag"}
-              </button>
-            </div>
 
-            <div className="mt-6 min-w-0 rounded-xl border border-gray-800 bg-[#0c0c1d] p-4">
-              <label className="mb-2 block text-xs uppercase tracking-wide text-gray-500">
-                Flag
-              </label>
-              <input
-                value={submittedFlag}
-                onChange={(event) => setSubmittedFlag(event.target.value)}
-                spellCheck={false}
-                autoCapitalize="none"
-                autoCorrect="off"
-                className="w-full min-w-0 rounded-xl border border-gray-700 bg-[#090914] px-4 py-3 font-mono text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                placeholder="flag{...}"
-              />
+              <div className="mt-6 min-w-0 rounded-xl border border-gray-800 bg-[#0c0c1d] p-4">
+                <label className="mb-2 block text-xs uppercase tracking-wide text-gray-500">
+                  Flag
+                </label>
+                <input
+                  value={submittedFlag}
+                  onChange={(event) => setSubmittedFlag(event.target.value)}
+                  spellCheck={false}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  className="w-full min-w-0 rounded-xl border border-gray-700 bg-[#090914] px-4 py-3 font-mono text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  placeholder="flag{...}"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="rounded-2xl border border-gray-800 bg-[#111127] p-6">
             <h2 className="text-lg font-semibold text-white">Latest Result</h2>
@@ -295,6 +307,10 @@ export default function CtfProblemPage() {
                 <StatusRow label="Reason" value={result.reason || "—"} />
                 <StatusRow label="Attempts" value={String(attempts)} />
               </div>
+            ) : solved ? (
+              <p className="mt-4 text-sm text-emerald-300">
+                This challenge is already solved for your account.
+              </p>
             ) : (
               <p className="mt-4 text-sm text-gray-500">
                 No flag submission has been made for this page load yet.
