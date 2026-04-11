@@ -53,15 +53,16 @@ export default function TrackDetailPage() {
       (sessions || []).map((session) => [session.problemSlug, session])
     );
 
-    return problems.map((problem) => {
+    return problems.reduce<TrackProblemListItem[]>((acc, problem) => {
       if (problem.isOffline !== true) {
-        return {
+        acc.push({
           slug: problem.slug,
           name: problem.name,
           points: problem.points,
           isOffline: false,
           offlineStatus: null,
-        };
+        });
+        return acc;
       }
 
       const session = sessionByProblem.get(problem.slug);
@@ -74,14 +75,21 @@ export default function TrackDetailPage() {
               ? "pending"
               : "ready";
 
-      return {
+      // Hide offline problems from the listing until the user has started one
+      if (offlineStatus === "ready") {
+        return acc;
+      }
+
+      acc.push({
         slug: problem.slug,
         name: problem.name,
         points: problem.points,
         isOffline: true,
         offlineStatus,
-      };
-    });
+      });
+
+      return acc;
+    }, []);
   }, [now, problems, sessions]);
 
   if (!track) {

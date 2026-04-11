@@ -92,6 +92,10 @@ export default function AlgorithmicsProblemIDEPage() {
   const languages = useQuery(api.programmingLanguages.listByTrack, {
     trackSlug: trackId,
   });
+  const problemPreview = useQuery(api.trackProblems.getPreviewBySlug, {
+    trackSlug: trackId,
+    slug: problemId,
+  });
   const problemRecord = useQuery(api.trackProblems.getBySlug, {
     trackSlug: trackId,
     slug: problemId,
@@ -244,15 +248,23 @@ export default function AlgorithmicsProblemIDEPage() {
   }, [clearProbeRequest]);
 
   const problemState = useMemo<ProblemAccessState>(() => {
-    if (problemRecord === undefined) {
+    if (problemPreview === undefined) {
       return { status: "loading" };
     }
 
-    if (!problemRecord) {
+    if (!problemPreview) {
       return { status: "not_found" };
     }
 
-    if (problemRecord.isOffline !== true) {
+    if (problemPreview.isOffline !== true) {
+      if (problemRecord === undefined) {
+        return { status: "loading" };
+      }
+
+      if (!problemRecord) {
+        return { status: "not_found" };
+      }
+
       return { status: "ready", problem: problemRecord };
     }
 
@@ -271,12 +283,20 @@ export default function AlgorithmicsProblemIDEPage() {
     if (session?.status === "terminated" || isOfflineSessionStale(session, now)) {
       return {
         status: "closed",
-        problem: toOfflineProblemPreview(problemRecord),
+        problem: toOfflineProblemPreview(problemPreview),
         closedReason: session?.terminatedReason ?? "connection_lost",
       };
     }
 
     if (session?.status === "active") {
+      if (problemRecord === undefined) {
+        return { status: "loading" };
+      }
+
+      if (!problemRecord) {
+        return { status: "not_found" };
+      }
+
       return {
         status: "ready",
         problem: {
@@ -289,7 +309,7 @@ export default function AlgorithmicsProblemIDEPage() {
 
     return {
       status: "offline_confirmation",
-      problem: toOfflineProblemPreview(problemRecord),
+      problem: toOfflineProblemPreview(problemPreview),
       canStartOfflineTask:
         typeof window !== "undefined"
           ? canStartOfflineTaskFromUrl(window.location.href)
@@ -298,6 +318,7 @@ export default function AlgorithmicsProblemIDEPage() {
   }, [
     now,
     optimisticClosedState,
+    problemPreview,
     problemRecord,
     runtimeConfig,
     session,
@@ -666,8 +687,8 @@ export default function AlgorithmicsProblemIDEPage() {
           pendingCloseReasonRef.current = null;
           setOptimisticClosedState({
             problem:
-              problemRecord
-                ? toOfflineProblemPreview(problemRecord)
+              problemPreview
+                ? toOfflineProblemPreview(problemPreview)
                 : toOfflineProblemPreview({
                     slug: problemId,
                     name: "Offline task",
@@ -684,7 +705,7 @@ export default function AlgorithmicsProblemIDEPage() {
       setIsConnectingOffline(false);
       setOfflineError(err.message || "Failed to start offline task");
     }
-  }, [clearProbeRequest, problemId, problemRecord, trackId]);
+  }, [clearProbeRequest, problemId, problemPreview, trackId]);
 
   if (problemState.status === "loading") {
     return (

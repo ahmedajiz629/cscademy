@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { getConvexUserClient } from "@/lib/convex-server";
+import { getConvexServiceClient, getConvexUserClient } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { isOfflineSessionStale } from "@/lib/offline-session";
@@ -22,6 +22,7 @@ export async function GET(
   const { trackId, problemId } = await params;
   const userId = auth.userId as Id<"users">;
   const convex = await getConvexUserClient(auth);
+  const convexService = await getConvexServiceClient("track-problem-runtime-route");
   const trackAccess = await getTrackAccess(convex, trackId);
 
   if (!trackAccess || !trackAccess.isVisible) {
@@ -29,7 +30,7 @@ export async function GET(
   }
 
   const [problem, session] = await Promise.all([
-    convex.query(api.trackProblems.getBySlug, {
+    convexService.query(api.trackProblems.getBySlugAdmin, {
       trackSlug: trackId,
       slug: problemId,
     }),

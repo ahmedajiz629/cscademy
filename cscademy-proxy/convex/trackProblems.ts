@@ -1,8 +1,11 @@
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { requireAdminOrService, requireService } from "./auth";
+import { getConvexIdentity, requireAdminOrService, requireService } from "./auth";
 import { insertProblemAvailabilityNotification } from "./notificationHelpers";
+import {
+  isOfflineSessionStale,
+} from "../lib/offline-session";
 import {
   normalizeMainProjectEvaluationScoreEntries,
   sumMainProjectEvaluationScores,
@@ -722,7 +725,49 @@ export const listByTrack = query({
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
 
-    const visibleProblems = problems.filter((problem) => problem.isActive !== false);
+    const identity = await getConvexIdentity(ctx);
+    const offlineSessionSlugs = new Set<string>();
+    const viewerUserId = identity?.userId;
+
+    if (
+      identity?.role !== "admin" &&
+      identity?.role !== "service" &&
+      viewerUserId !== undefined
+    ) {
+      const requiredViewerUserId: Id<"users"> = viewerUserId;
+
+      const sessions = await ctx.db
+        .query("offlineProblemSessions")
+        .withIndex("by_user_track", (q) =>
+          q.eq("userId", requiredViewerUserId).eq("trackSlug", trackSlug)
+        )
+        .collect();
+
+      for (const session of sessions) {
+        offlineSessionSlugs.add(session.problemSlug);
+      }
+    }
+
+    const visibleProblems = problems.filter((problem) => {
+      if (problem.isActive === false) {
+        return false;
+      }
+
+      if (problem.isOffline !== true) {
+        return true;
+      }
+
+      if (identity?.role === "admin" || identity?.role === "service") {
+        return true;
+      }
+
+      if (!identity?.userId) {
+        return false;
+      }
+
+      return offlineSessionSlugs.has(problem.slug);
+    });
+
     const mergedProblems = await Promise.all(
       visibleProblems.map((problem) => mergeProblemWithConfig(ctx, problem))
     );
@@ -792,7 +837,83 @@ export const getBySlug = query({
     // Return null for disabled problems (students see "not found")
     if (problem?.isActive === false) return null;
 
+    if (problem?.isOffline === true) {
+      const identity = await getConvexIdentity(ctx);
+
+      if (identity?.role !== "admin" && identity?.role !== "service") {
+        const viewerUserId = identity?.userId;
+
+        if (viewerUserId === undefined) {
+          return null;
+        }
+
+        const requiredViewerUserId: Id<"users"> = viewerUserId;
+
+        const session = await ctx.db
+          .query("offlineProblemSessions")
+          .withIndex("by_user_problem", (q) =>
+            q
+              .eq("userId", requiredViewerUserId)
+              .eq("trackSlug", trackSlug)
+              .eq("problemSlug", slug)
+          )
+          .first();
+
+        if (session?.status !== "active" || isOfflineSessionStale(session)) {
+          return null;
+        }
+      }
+    }
+
     return problem ? mergeProblemWithConfig(ctx, problem) : null;
+  },
+});
+
+export const getPreviewBySlug = query({
+  args: { trackSlug: v.string(), slug: v.string() },
+  handler: async (ctx, { trackSlug, slug }) => {
+    const results = await ctx.db
+      .query("trackProblems")
+      .withIndex("by_trackSlug_slug", (q) =>
+        q.eq("trackSlug", trackSlug).eq("slug", slug)
+      )
+      .collect();
+
+    const problem = results[0] || null;
+    if (problem?.isActive === false || !problem) {
+      return null;
+    }
+
+    const merged = await mergeProblemWithConfig(ctx, problem);
+
+    return {
+      slug: merged.slug,
+      name: merged.name,
+      points: merged.points,
+      isOffline: merged.isOffline === true,
+      offlineTaskPreDescription: merged.offlineTaskPreDescription,
+    };
+  },
+});
+
+export const getBySlugAdmin = query({
+  args: { trackSlug: v.string(), slug: v.string() },
+  handler: async (ctx, { trackSlug, slug }) => {
+    await requireAdminOrService(ctx);
+
+    const results = await ctx.db
+      .query("trackProblems")
+      .withIndex("by_trackSlug_slug", (q) =>
+        q.eq("trackSlug", trackSlug).eq("slug", slug)
+      )
+      .collect();
+
+    const problem = results[0] || null;
+    if (problem?.isActive === false || !problem) {
+      return null;
+    }
+
+    return mergeProblemWithConfig(ctx, problem);
   },
 });
 

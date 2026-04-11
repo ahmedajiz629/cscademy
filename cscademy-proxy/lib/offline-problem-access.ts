@@ -21,7 +21,7 @@ export async function getRuntimeProblemAccess(
     };
   }
 
-  const problem = await convex.query(api.trackProblems.getBySlug, {
+  const problem = await convex.query(api.trackProblems.getBySlugAdmin, {
     trackSlug,
     slug: problemSlug,
   });
