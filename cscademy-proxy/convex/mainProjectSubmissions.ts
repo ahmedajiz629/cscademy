@@ -5,8 +5,12 @@ import {
   MAIN_PROJECT_TRACK_SLUG,
   fileMatchesMainProjectField,
   isSha256Hex,
+  normalizeMainProjectEvaluationScoreEntries,
+  sumMainProjectEvaluationScores,
   type MainProjectCustomTextField,
   type MainProjectCustomTextFieldValue,
+  type MainProjectEvaluationCriterion,
+  type MainProjectEvaluationScoreEntry,
 } from "../lib/main-project";
 import {
   requireAdminOrService,
@@ -127,6 +131,64 @@ function validateSubmittedCustomFieldValues(
     .filter((entry) => entry.value);
 }
 
+function areMainProjectEvaluationScoresEqual(
+  left?: MainProjectEvaluationScoreEntry[] | null,
+  right?: MainProjectEvaluationScoreEntry[] | null
+) {
+  const normalizedLeft = left ?? [];
+  const normalizedRight = right ?? [];
+
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+
+  return normalizedLeft.every(
+    (entry, index) =>
+      entry.criterionId === normalizedRight[index]?.criterionId &&
+      entry.points === normalizedRight[index]?.points
+  );
+}
+
+async function upsertExactMainProjectScore(
+  ctx: any,
+  problem: { trackSlug: string; slug: string; points: number },
+  userId: Id<"users">,
+  score: number,
+  { createIfMissing = true }: { createIfMissing?: boolean } = {}
+) {
+  const normalizedScore = Math.min(problem.points, Math.max(0, score));
+  const existing = await ctx.db
+    .query("scores")
+    .withIndex("by_user_problem", (q: any) =>
+      q
+        .eq("userId", userId)
+        .eq("trackSlug", problem.trackSlug)
+        .eq("problemSlug", problem.slug)
+    )
+    .first();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      score: normalizedScore,
+      lastAttemptAt: Date.now(),
+    });
+    return existing._id;
+  }
+
+  if (!createIfMissing) {
+    return null;
+  }
+
+  return ctx.db.insert("scores", {
+    userId,
+    trackSlug: problem.trackSlug,
+    problemSlug: problem.slug,
+    score: normalizedScore,
+    attempts: 0,
+    lastAttemptAt: Date.now(),
+  });
+}
+
 async function requireRegisteredUploadHash(
   ctx: any,
   {
@@ -196,19 +258,21 @@ export const listByProblemAdmin = query({
       return [];
     }
 
-    const [submissions, users] = await Promise.all([
+    const [rawSubmissions, users] = await Promise.all([
       ctx.db
         .query("mainProjectSubmissions")
         .withIndex("by_problem", (q) => q.eq("problemId", problemId))
         .collect(),
       ctx.db.query("users").collect(),
     ]);
+    const submissions = rawSubmissions as Array<any>;
 
     const userMap = new Map(users.map((user) => [user._id, user]));
 
     return submissions
       .map((submission) => ({
         ...submission,
+        evaluationScores: submission.evaluationScores ?? [],
         userEmail: userMap.get(submission.userId)?.email ?? "",
         userName: userMap.get(submission.userId)?.name ?? "Unknown user",
       }))
@@ -414,7 +478,13 @@ export const saveVerifiedSubmission = mutation({
     };
 
     if (existing) {
-      await ctx.db.patch(existing._id, payload);
+      await ctx.db.patch(existing._id, {
+        ...payload,
+        evaluationScores: [],
+      } as any);
+      await upsertExactMainProjectScore(ctx, problem, args.userId, 0, {
+        createIfMissing: false,
+      });
       return existing._id;
     }
 
@@ -424,6 +494,84 @@ export const saveVerifiedSubmission = mutation({
       createdAt: Date.now(),
       ...payload,
     });
+  },
+});
+
+export const setEvaluationScore = mutation({
+  args: {
+    submissionId: v.id("mainProjectSubmissions"),
+    criterionId: v.string(),
+    points: v.optional(v.number()),
+  },
+  handler: async (ctx, { submissionId, criterionId, points }) => {
+    await requireAdminOrService(ctx);
+
+    const submission = (await ctx.db.get(submissionId)) as any;
+    if (!submission) {
+      throw new Error("Main project submission not found.");
+    }
+
+    const problem = await getMainProjectProblemById(ctx, submission.problemId);
+    if (!problem) {
+      throw new Error("Main project problem not found.");
+    }
+
+    const config = await getMainProjectConfigByProblemId(ctx, problem._id);
+    const criteria = (config?.evaluationCriteria ?? []) as MainProjectEvaluationCriterion[];
+    const normalizedCriterionId = criterionId.trim();
+
+    if (!normalizedCriterionId) {
+      throw new Error("Evaluation criterion is required.");
+    }
+
+    const criterion = criteria.find((entry) => entry.id === normalizedCriterionId);
+    if (!criterion) {
+      throw new Error("Evaluation criterion not found.");
+    }
+
+    if (
+      points !== undefined &&
+      (!Number.isFinite(points) || points < 0 || points > criterion.coefficient)
+    ) {
+      throw new Error(
+        `Score must be between 0 and ${criterion.coefficient} for this criterion.`
+      );
+    }
+
+    const currentScores = Array.isArray(submission.evaluationScores)
+      ? (submission.evaluationScores as MainProjectEvaluationScoreEntry[])
+      : [];
+    const nextScoreEntries = new Map(
+      currentScores.map((entry) => [entry.criterionId, entry.points])
+    );
+
+    if (points === undefined) {
+      nextScoreEntries.delete(normalizedCriterionId);
+    } else {
+      nextScoreEntries.set(normalizedCriterionId, Number(points));
+    }
+
+    const nextScores = normalizeMainProjectEvaluationScoreEntries(
+      criteria,
+      Array.from(nextScoreEntries, ([nextCriterionId, nextPoints]) => ({
+        criterionId: nextCriterionId,
+        points: nextPoints,
+      }))
+    );
+
+    if (!areMainProjectEvaluationScoresEqual(currentScores, nextScores)) {
+      await ctx.db.patch(submissionId, { evaluationScores: nextScores } as any);
+    }
+
+    const totalScore = sumMainProjectEvaluationScores(nextScores);
+    await upsertExactMainProjectScore(ctx, problem, submission.userId, totalScore, {
+      createIfMissing: nextScores.length > 0,
+    });
+
+    return {
+      totalScore: Math.min(problem.points, Math.max(0, totalScore)),
+      evaluationScores: nextScores,
+    };
   },
 });
 

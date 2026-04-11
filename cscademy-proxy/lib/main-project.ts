@@ -20,6 +20,18 @@ export interface MainProjectCustomTextFieldValue {
   value: string;
 }
 
+export interface MainProjectEvaluationCriterion {
+  id: string;
+  name: string;
+  description?: string;
+  coefficient: number;
+}
+
+export interface MainProjectEvaluationScoreEntry {
+  criterionId: string;
+  points: number;
+}
+
 export const MAIN_PROJECT_UPLOAD_FIELDS: Record<
   MainProjectUploadFieldKey,
   {
@@ -122,6 +134,52 @@ export function slugifyMainProjectFieldId(label: string): string {
     .replace(/^-+|-+$/g, "");
 
   return normalized || "field";
+}
+
+export function sumMainProjectEvaluationCoefficients(
+  criteria?: MainProjectEvaluationCriterion[] | null
+): number {
+  return (criteria ?? []).reduce((total, criterion) => {
+    const coefficient = Number(criterion.coefficient);
+    return total + (Number.isFinite(coefficient) ? coefficient : 0);
+  }, 0);
+}
+
+export function normalizeMainProjectEvaluationScoreEntries(
+  criteria?: MainProjectEvaluationCriterion[] | null,
+  scores?: MainProjectEvaluationScoreEntry[] | null
+): MainProjectEvaluationScoreEntry[] {
+  if (!criteria || criteria.length === 0) {
+    return [];
+  }
+
+  const scoreByCriterionId = new Map(
+    (scores ?? []).map((entry) => [entry.criterionId, entry.points])
+  );
+
+  return criteria.flatMap((criterion) => {
+    if (!scoreByCriterionId.has(criterion.id)) {
+      return [];
+    }
+
+    const rawPoints = Number(scoreByCriterionId.get(criterion.id));
+    if (!Number.isFinite(rawPoints)) {
+      return [];
+    }
+
+    return [
+      {
+        criterionId: criterion.id,
+        points: Math.min(criterion.coefficient, Math.max(0, rawPoints)),
+      },
+    ];
+  });
+}
+
+export function sumMainProjectEvaluationScores(
+  scores?: MainProjectEvaluationScoreEntry[] | null
+): number {
+  return (scores ?? []).reduce((total, entry) => total + entry.points, 0);
 }
 
 export function getMainProjectDepotStatus(

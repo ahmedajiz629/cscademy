@@ -15,6 +15,18 @@ const mainProjectCustomTextFieldValueValidator = v.object({
   value: v.string(),
 });
 
+const mainProjectEvaluationCriterionValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  description: v.optional(v.string()),
+  coefficient: v.number(),
+});
+
+const mainProjectEvaluationScoreValidator = v.object({
+  criterionId: v.string(),
+  points: v.number(),
+});
+
 const mainProjectUploadFieldKeyValidator = v.union(
   v.literal("archive"),
   v.literal("presentation"),
@@ -103,6 +115,7 @@ export default defineSchema({
     depotOpensAt: v.optional(v.number()),
     depotClosesAt: v.optional(v.number()),
     customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
+    evaluationCriteria: v.optional(v.array(mainProjectEvaluationCriterionValidator)),
   }).index("by_problemId", ["problemId"]),
 
   mainProjectUploadRegistrations: defineTable({
@@ -131,6 +144,7 @@ export default defineSchema({
     demoUrl: v.string(),
     demoHash: v.optional(v.string()),
     customFieldValues: v.array(mainProjectCustomTextFieldValueValidator),
+    evaluationScores: v.optional(v.array(mainProjectEvaluationScoreValidator)),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

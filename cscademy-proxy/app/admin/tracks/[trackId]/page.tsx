@@ -4,14 +4,18 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
+import MainProjectEvaluationMatrix from "@/components/admin/MainProjectEvaluationMatrix";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { formatScore } from "@/lib/score-format";
 import { getTrack } from "@/lib/tracks";
 import {
   formatMainProjectDate,
   getMainProjectDepotStatus,
   slugifyMainProjectFieldId,
+  sumMainProjectEvaluationCoefficients,
   type MainProjectCustomTextField,
+  type MainProjectEvaluationCriterion,
 } from "@/lib/main-project";
 
 type Problem = {
@@ -42,6 +46,7 @@ type Problem = {
   externalLink?: string;
   briefDownloadUrl?: string;
   customTextFields?: MainProjectCustomTextField[];
+  evaluationCriteria?: MainProjectEvaluationCriterion[];
   depotOpensAt?: number;
   depotClosesAt?: number;
   flag?: string;
@@ -69,6 +74,7 @@ const EMPTY_FORM = {
   externalLink: "",
   briefDownloadUrl: "",
   customTextFields: [] as MainProjectCustomTextField[],
+  evaluationCriteria: [] as MainProjectEvaluationCriterion[],
   flag: "",
   isOffline: false,
   offlineTaskPreDescription: "",
@@ -119,6 +125,19 @@ function parseExtraDockerEnvVars(rawValue?: string | null) {
   return { invalidLines };
 }
 
+function serializeMainProjectEvaluationCriteria(
+  criteria: MainProjectEvaluationCriterion[]
+) {
+  return JSON.stringify(
+    criteria.map((criterion) => ({
+      id: criterion.id.trim(),
+      name: criterion.name.trim(),
+      description: criterion.description?.trim() || "",
+      coefficient: Number(criterion.coefficient),
+    }))
+  );
+}
+
 export default function AdminTrackDetailPage() {
   const params = useParams();
   const trackId = params.trackId as string;
@@ -153,7 +172,30 @@ export default function AdminTrackDetailPage() {
   const isCtfTrack = trackId === "ctf";
   const isAlgorithmicsTrack = trackId === "algorithmics";
   const isMainProjectTrack = trackId === "main-project";
+  const mainProjectAdminSubmissions = useQuery(
+    api.mainProjectSubmissions.listByProblemAdmin,
+    isMainProjectTrack && mode === "edit" && editingId
+      ? { problemId: editingId }
+      : "skip"
+  );
   const isAlgorithmicsImportMode = isAlgorithmicsTrack && mode === "add";
+  const editingProblem =
+    editingId && problems
+      ? problems.find((problem) => problem._id === editingId) ?? null
+      : null;
+  const draftEvaluationCriteriaSignature = serializeMainProjectEvaluationCriteria(
+    form.evaluationCriteria
+  );
+  const persistedEvaluationCriteriaSignature = serializeMainProjectEvaluationCriteria(
+    editingProblem?.evaluationCriteria ?? []
+  );
+  const hasUnsavedEvaluationCriteriaChanges =
+    mode === "edit" &&
+    isMainProjectTrack &&
+    draftEvaluationCriteriaSignature !== persistedEvaluationCriteriaSignature;
+  const evaluationCriteriaTotal = sumMainProjectEvaluationCoefficients(
+    form.evaluationCriteria
+  );
   const canAddProblem =
     !isSoftwareEngineeringTrack || (problems?.length ?? 0) === 0;
   const isFormValid = isAlgorithmicsImportMode
@@ -170,7 +212,13 @@ export default function AdminTrackDetailPage() {
           !!form.evaluationImage.trim() &&
           !!form.evaluationCommand.trim())) &&
       (!isMainProjectTrack ||
-        form.customTextFields.every((field) => !!field.label.trim())) &&
+        (form.customTextFields.every((field) => !!field.label.trim()) &&
+          form.evaluationCriteria.every(
+            (criterion) =>
+              !!criterion.name.trim() &&
+              Number.isFinite(criterion.coefficient) &&
+              criterion.coefficient >= 0
+          ))) &&
       (!isCtfTrack || mode === "edit" || !!form.flag.trim());
 
   const isActive = settings !== undefined
@@ -197,6 +245,7 @@ export default function AdminTrackDetailPage() {
       defaultSubmissionRef: isSoftwareEngineeringTrack ? "challenge" : "",
       starterSubmission: "",
       customTextFields: [],
+      evaluationCriteria: [],
     });
     setDepotCloseAtDraft("");
     setEditingId(null);
@@ -226,6 +275,9 @@ export default function AdminTrackDetailPage() {
       externalLink: p.externalLink ?? "",
       briefDownloadUrl: p.briefDownloadUrl ?? "",
       customTextFields: (p.customTextFields ?? []).map((field) => ({ ...field })),
+      evaluationCriteria: (p.evaluationCriteria ?? []).map((criterion) => ({
+        ...criterion,
+      })),
       flag: "",
       isOffline: p.isOffline ?? false,
       offlineTaskPreDescription: p.offlineTaskPreDescription ?? "",
@@ -274,6 +326,42 @@ export default function AdminTrackDetailPage() {
     setForm((current) => ({
       ...current,
       customTextFields: current.customTextFields.filter((field) => field.id !== fieldId),
+    }));
+  }
+
+  function addMainProjectEvaluationCriterion() {
+    setForm((current) => ({
+      ...current,
+      evaluationCriteria: [
+        ...current.evaluationCriteria,
+        {
+          id: `criterion-${crypto.randomUUID().slice(0, 8)}`,
+          name: "",
+          description: "",
+          coefficient: 0,
+        },
+      ],
+    }));
+  }
+
+  function updateMainProjectEvaluationCriterion(
+    criterionId: string,
+    patch: Partial<MainProjectEvaluationCriterion>
+  ) {
+    setForm((current) => ({
+      ...current,
+      evaluationCriteria: current.evaluationCriteria.map((criterion) =>
+        criterion.id === criterionId ? { ...criterion, ...patch } : criterion
+      ),
+    }));
+  }
+
+  function removeMainProjectEvaluationCriterion(criterionId: string) {
+    setForm((current) => ({
+      ...current,
+      evaluationCriteria: current.evaluationCriteria.filter(
+        (criterion) => criterion.id !== criterionId
+      ),
     }));
   }
 
@@ -381,6 +469,14 @@ export default function AdminTrackDetailPage() {
             multiline: field.multiline === true,
           }))
         : undefined;
+      const evaluationCriteria = isMainProjectTrack
+        ? form.evaluationCriteria.map((criterion) => ({
+            id: criterion.id.trim(),
+            name: criterion.name.trim(),
+            description: criterion.description?.trim() || undefined,
+            coefficient: Number(criterion.coefficient),
+          }))
+        : undefined;
       const flag = isCtfTrack ? form.flag.trim() || undefined : undefined;
       const offlineTaskPreDescription = form.isOffline
         ? form.offlineTaskPreDescription.trim()
@@ -399,6 +495,23 @@ export default function AdminTrackDetailPage() {
         const emptyLabel = customTextFields?.find((field) => !field.label.trim());
         if (emptyLabel) {
           throw new Error("Each main project custom field needs a label.");
+        }
+
+        const emptyCriterion = evaluationCriteria?.find(
+          (criterion) => !criterion.name.trim()
+        );
+        if (emptyCriterion) {
+          throw new Error("Each evaluation criterion needs a name.");
+        }
+
+        const invalidCriterion = evaluationCriteria?.find(
+          (criterion) =>
+            !Number.isFinite(criterion.coefficient) || criterion.coefficient < 0
+        );
+        if (invalidCriterion) {
+          throw new Error(
+            "Each evaluation criterion needs a valid non-negative coefficient."
+          );
         }
       }
 
@@ -466,6 +579,7 @@ export default function AdminTrackDetailPage() {
           externalLink,
           briefDownloadUrl,
           customTextFields,
+          evaluationCriteria,
           isOffline: form.isOffline,
           offlineTaskPreDescription,
         });
@@ -499,6 +613,7 @@ export default function AdminTrackDetailPage() {
           externalLink,
           briefDownloadUrl,
           customTextFields,
+          evaluationCriteria,
           isOffline: form.isOffline,
           offlineTaskPreDescription,
         });
@@ -1091,6 +1206,144 @@ export default function AdminTrackDetailPage() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                <div className="col-span-2 rounded-xl border border-gray-800 bg-[#0d0d1d] p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white">
+                        Evaluation Criteria
+                      </h4>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Define the rubric used for inline student-by-criterion scoring.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addMainProjectEvaluationCriterion}
+                      className="rounded-lg border border-cyan-500/30 px-3 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-400/60 hover:text-cyan-100"
+                    >
+                      + Add Criterion
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                    <span>
+                      Rubric total:{" "}
+                      <span className="text-gray-300">
+                        {formatScore(evaluationCriteriaTotal)}
+                      </span>
+                    </span>
+                    <span>
+                      Problem points:{" "}
+                      <span className="text-gray-300">{formatScore(form.points)}</span>
+                    </span>
+                  </div>
+
+                  {form.evaluationCriteria.length > 0 &&
+                    evaluationCriteriaTotal !== form.points && (
+                      <p className="mt-2 text-xs text-amber-300">
+                        The rubric total and the problem points differ. Saved matrix totals are clamped to the problem points on the participant score view and leaderboards.
+                      </p>
+                    )}
+
+                  {form.evaluationCriteria.length === 0 ? (
+                    <p className="mt-4 text-sm text-gray-500">
+                      No evaluation criteria yet. Add items such as technical quality, presentation, or impact.
+                    </p>
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      {form.evaluationCriteria.map((criterion, index) => (
+                        <div
+                          key={criterion.id}
+                          className="rounded-lg border border-gray-800 bg-[#08101f] p-4"
+                        >
+                          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">
+                                Name
+                              </label>
+                              <input
+                                value={criterion.name}
+                                onChange={(e) =>
+                                  updateMainProjectEvaluationCriterion(criterion.id, {
+                                    name: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                placeholder={`Criterion ${index + 1}`}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-400 mb-1">
+                                Coefficient
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.1"
+                                value={criterion.coefficient}
+                                onChange={(e) =>
+                                  updateMainProjectEvaluationCriterion(criterion.id, {
+                                    coefficient: Number(e.target.value),
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-xs text-gray-400 mb-1">
+                                Description
+                              </label>
+                              <textarea
+                                rows={3}
+                                value={criterion.description ?? ""}
+                                onChange={(e) =>
+                                  updateMainProjectEvaluationCriterion(criterion.id, {
+                                    description: e.target.value,
+                                  })
+                                }
+                                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
+                                placeholder="Explain what this criterion measures"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <span className="text-xs font-mono text-gray-500">
+                              {criterion.id}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeMainProjectEvaluationCriterion(criterion.id)
+                              }
+                              className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-300 transition-colors hover:border-red-400/60 hover:text-red-200"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-span-2">
+                  <MainProjectEvaluationMatrix
+                    criteria={editingProblem?.evaluationCriteria ?? []}
+                    participants={mainProjectAdminSubmissions}
+                    problemPoints={editingProblem?.points ?? form.points}
+                    disabledReason={
+                      mode === "add"
+                        ? "Save this problem before entering participant evaluations."
+                        : !editingProblem
+                          ? "Loading the saved problem configuration..."
+                          : hasUnsavedEvaluationCriteriaChanges
+                            ? "Save the evaluation criteria changes, then reopen this problem to score participants against the updated rubric."
+                            : undefined
+                    }
+                  />
                 </div>
 
                 {mode === "edit" && editingId && (

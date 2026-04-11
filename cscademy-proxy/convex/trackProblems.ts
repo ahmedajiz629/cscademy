@@ -3,6 +3,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireAdminOrService, requireService } from "./auth";
 import { insertProblemAvailabilityNotification } from "./notificationHelpers";
+import {
+  normalizeMainProjectEvaluationScoreEntries,
+  sumMainProjectEvaluationScores,
+} from "../lib/main-project";
 
 const mainProjectCustomTextFieldValidator = v.object({
   id: v.string(),
@@ -11,6 +15,13 @@ const mainProjectCustomTextFieldValidator = v.object({
   helpText: v.optional(v.string()),
   required: v.optional(v.boolean()),
   multiline: v.optional(v.boolean()),
+});
+
+const mainProjectEvaluationCriterionValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  description: v.optional(v.string()),
+  coefficient: v.number(),
 });
 
 type BaseProblem = Doc<"trackProblems">;
@@ -152,6 +163,165 @@ function normalizeMainProjectCustomTextFields(
     required: field.required === true,
     multiline: field.multiline === true,
   }));
+}
+
+function assertMainProjectEvaluationCriteria(
+  criteria?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    coefficient: number;
+  }> | null
+) {
+  if (!criteria) {
+    return;
+  }
+
+  const seenIds = new Set<string>();
+
+  for (const criterion of criteria) {
+    const id = criterion.id.trim();
+    const name = criterion.name.trim();
+    const coefficient = Number(criterion.coefficient);
+
+    if (!id || !/^[a-z0-9-]+$/i.test(id)) {
+      throw new Error("Main project evaluation criterion IDs must be URL-safe strings.");
+    }
+
+    if (!name) {
+      throw new Error("Main project evaluation criteria require a name.");
+    }
+
+    if (!Number.isFinite(coefficient) || coefficient < 0) {
+      throw new Error(
+        "Main project evaluation criteria require a valid non-negative coefficient."
+      );
+    }
+
+    if (seenIds.has(id)) {
+      throw new Error("Main project evaluation criterion IDs must be unique.");
+    }
+
+    seenIds.add(id);
+  }
+}
+
+function normalizeMainProjectEvaluationCriteria(
+  criteria?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    coefficient: number;
+  }> | null
+) {
+  if (!criteria) {
+    return undefined;
+  }
+
+  return criteria.map((criterion) => ({
+    id: criterion.id.trim(),
+    name: criterion.name.trim(),
+    description: getTrimmedString(criterion.description) ?? undefined,
+    coefficient: Number(criterion.coefficient),
+  }));
+}
+
+function areMainProjectEvaluationScoresEqual(
+  left?: Array<{ criterionId: string; points: number }> | null,
+  right?: Array<{ criterionId: string; points: number }> | null
+) {
+  const normalizedLeft = left ?? [];
+  const normalizedRight = right ?? [];
+
+  if (normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+
+  return normalizedLeft.every(
+    (entry, index) =>
+      entry.criterionId === normalizedRight[index]?.criterionId &&
+      entry.points === normalizedRight[index]?.points
+  );
+}
+
+async function upsertExactProblemScore(
+  ctx: any,
+  problem: BaseProblem,
+  userId: Id<"users">,
+  score: number,
+  { createIfMissing = true }: { createIfMissing?: boolean } = {}
+) {
+  const normalizedScore = Math.min(problem.points, Math.max(0, score));
+  const existing = await ctx.db
+    .query("scores")
+    .withIndex("by_user_problem", (q: any) =>
+      q
+        .eq("userId", userId)
+        .eq("trackSlug", problem.trackSlug)
+        .eq("problemSlug", problem.slug)
+    )
+    .first();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      score: normalizedScore,
+      lastAttemptAt: Date.now(),
+    });
+    return existing._id;
+  }
+
+  if (!createIfMissing) {
+    return null;
+  }
+
+  return ctx.db.insert("scores", {
+    userId,
+    trackSlug: problem.trackSlug,
+    problemSlug: problem.slug,
+    score: normalizedScore,
+    attempts: 0,
+    lastAttemptAt: Date.now(),
+  });
+}
+
+async function syncMainProjectEvaluationScoresForProblem(
+  ctx: any,
+  problem: BaseProblem,
+  evaluationCriteria?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    coefficient: number;
+  }> | null
+) {
+  const submissions = (await ctx.db
+    .query("mainProjectSubmissions")
+    .withIndex("by_problem", (q: any) => q.eq("problemId", problem._id))
+    .collect()) as Array<any>;
+
+  for (const submission of submissions) {
+    const currentScores = Array.isArray(submission.evaluationScores)
+      ? submission.evaluationScores
+      : [];
+    const nextScores = normalizeMainProjectEvaluationScoreEntries(
+      evaluationCriteria,
+      currentScores
+    );
+
+    if (!areMainProjectEvaluationScoresEqual(currentScores, nextScores)) {
+      await ctx.db.patch(submission._id, { evaluationScores: nextScores } as any);
+    }
+
+    if (currentScores.length > 0 || nextScores.length > 0) {
+      await upsertExactProblemScore(
+        ctx,
+        problem,
+        submission.userId,
+        sumMainProjectEvaluationScores(nextScores),
+        { createIfMissing: nextScores.length > 0 }
+      );
+    }
+  }
 }
 
 async function getAlgorithmicsConfigByProblemId(ctx: any, problemId: Id<"trackProblems">) {
@@ -351,12 +521,19 @@ async function upsertMainProjectConfig(
       required?: boolean;
       multiline?: boolean;
     }>;
+    evaluationCriteria?: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      coefficient: number;
+    }>;
   }
 ) {
   const existingConfig = await getMainProjectConfigByProblemId(ctx, problemId);
   const cleanConfig = cleanFields({
     briefDownloadUrl: fields.briefDownloadUrl,
     customTextFields: normalizeMainProjectCustomTextFields(fields.customTextFields),
+    evaluationCriteria: normalizeMainProjectEvaluationCriteria(fields.evaluationCriteria),
   });
 
   if (existingConfig) {
@@ -450,6 +627,14 @@ async function mergeProblemWithConfig(
           multiline?: boolean;
         }>
       | undefined,
+    evaluationCriteria: undefined as
+      | Array<{
+          id: string;
+          name: string;
+          description?: string;
+          coefficient: number;
+        }>
+      | undefined,
     depotOpensAt: undefined as number | undefined,
     depotClosesAt: undefined as number | undefined,
     isOffline: problem.isOffline ?? false,
@@ -515,6 +700,7 @@ async function mergeProblemWithConfig(
       ...sharedShape,
       briefDownloadUrl: config?.briefDownloadUrl,
       customTextFields: config?.customTextFields,
+      evaluationCriteria: config?.evaluationCriteria,
       depotOpensAt: config?.depotOpensAt,
       depotClosesAt: config?.depotClosesAt,
     };
@@ -665,6 +851,7 @@ export const create = mutation({
     flagHash: v.optional(v.string()),
     briefDownloadUrl: v.optional(v.string()),
     customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
+    evaluationCriteria: v.optional(v.array(mainProjectEvaluationCriterionValidator)),
     isOffline: v.optional(v.boolean()),
     offlineTaskPreDescription: v.optional(v.string()),
     leaderboardVisible: v.optional(v.boolean()),
@@ -697,6 +884,7 @@ export const create = mutation({
 
     if (args.trackSlug === "main-project") {
       assertMainProjectCustomTextFields(args.customTextFields);
+      assertMainProjectEvaluationCriteria(args.evaluationCriteria);
     }
 
     const problemId = await ctx.db.insert("trackProblems", {
@@ -752,7 +940,18 @@ export const create = mutation({
       await upsertMainProjectConfig(ctx, problemId, {
         briefDownloadUrl: args.briefDownloadUrl,
         customTextFields: args.customTextFields,
+        evaluationCriteria: args.evaluationCriteria,
       });
+
+      const createdProblem = await ctx.db.get(problemId);
+      const createdConfig = await getMainProjectConfigByProblemId(ctx, problemId);
+      if (createdProblem) {
+        await syncMainProjectEvaluationScoresForProblem(
+          ctx,
+          createdProblem,
+          createdConfig?.evaluationCriteria
+        );
+      }
     }
 
     await insertProblemAvailabilityNotification(
@@ -794,6 +993,7 @@ export const update = mutation({
     flagHash: v.optional(v.string()),
     briefDownloadUrl: v.optional(v.string()),
     customTextFields: v.optional(v.array(mainProjectCustomTextFieldValidator)),
+    evaluationCriteria: v.optional(v.array(mainProjectEvaluationCriterionValidator)),
     isOffline: v.optional(v.boolean()),
     offlineTaskPreDescription: v.optional(v.string()),
     leaderboardVisible: v.optional(v.boolean()),
@@ -822,6 +1022,7 @@ export const update = mutation({
 
     if (problem.trackSlug === "main-project") {
       assertMainProjectCustomTextFields(fields.customTextFields);
+      assertMainProjectEvaluationCriteria(fields.evaluationCriteria);
     }
 
     const sharedFields = cleanFields({
@@ -879,7 +1080,18 @@ export const update = mutation({
       await upsertMainProjectConfig(ctx, id, {
         briefDownloadUrl: fields.briefDownloadUrl,
         customTextFields: fields.customTextFields,
+        evaluationCriteria: fields.evaluationCriteria,
       });
+
+      const updatedProblem = await ctx.db.get(id);
+      const updatedConfig = await getMainProjectConfigByProblemId(ctx, id);
+      if (updatedProblem) {
+        await syncMainProjectEvaluationScoresForProblem(
+          ctx,
+          updatedProblem,
+          updatedConfig?.evaluationCriteria
+        );
+      }
     }
   },
 });
