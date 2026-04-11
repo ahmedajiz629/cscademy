@@ -289,6 +289,21 @@ function parseAnsiText(output: string, isError: boolean): StyledTextSegment[] {
   return segments;
 }
 
+function formatTime(ms: number | undefined): string {
+  if (ms === undefined || ms === null) return "—";
+  // CSAcademy sometimes sends seconds (float < 100) instead of ms
+  const millis = ms > 0 && ms < 100 ? ms * 1000 : ms;
+  return `${millis.toFixed(0)} ms`;
+}
+
+function formatMemory(bytes: number | undefined): string {
+  if (bytes === undefined || bytes === null) return "—";
+  // CSAcademy sends bytes; show in KB, or MB if large
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
 export default function OutputPanel({
   output,
   isError,
@@ -305,23 +320,70 @@ export default function OutputPanel({
         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
           Output
         </span>
-        {score !== null && score !== undefined && (
-          <span
-            className={`text-xs font-bold px-2 py-0.5 rounded ${
-              score === 100
-                ? "bg-green-900/50 text-green-400"
-                : "bg-yellow-900/50 text-yellow-400"
-            }`}
-          >
-            Score: {score.toFixed(0)}%
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isLoading && testResults && testResults.length > 0 && (
+            <span className="text-xs font-mono text-indigo-300 animate-pulse">
+              {testResults.filter((t) => t.checkerScore === 1).length}/{testResults.length}
+            </span>
+          )}
+          {!isLoading && score !== null && score !== undefined && (
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded ${
+                score === 100
+                  ? "bg-green-900/50 text-green-400"
+                  : "bg-yellow-900/50 text-yellow-400"
+              }`}
+            >
+              Score: {score.toFixed(0)}%
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        {isLoading ? (
-          <div className="flex items-center space-x-2 text-gray-400">
-            <div className="animate-spin h-4 w-4 border-2 border-indigo-500 rounded-full border-t-transparent" />
-            <span className="text-sm">{loadingText}</span>
+      {isLoading ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-gray-400">
+              <div className="animate-spin h-4 w-4 border-2 border-indigo-500 rounded-full border-t-transparent flex-shrink-0" />
+              <span className="text-sm">
+                {testResults && testResults.length > 0
+                  ? `${loadingText} (${testResults.length} test${testResults.length !== 1 ? "s" : ""} so far)`
+                  : loadingText}
+              </span>
+            </div>
+            {testResults && testResults.length > 0 && (
+              <div className="border border-gray-700/50 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <tbody>
+                    {testResults.map((t, i) => {
+                      const passed = t.checkerScore === 1;
+                      const partial =
+                        t.checkerScore !== undefined &&
+                        t.checkerScore > 0 &&
+                        t.checkerScore < 1;
+                      return (
+                        <tr key={i} className="border-t border-gray-800/50 first:border-t-0">
+                          <td className="px-2 py-1 text-gray-500 w-6">{i + 1}</td>
+                          <td className="px-2 py-1">
+                            {passed ? (
+                              <span className="text-green-400">✓</span>
+                            ) : partial ? (
+                              <span className="text-yellow-400">
+                                {((t.checkerScore ?? 0) * 100).toFixed(0)}%
+                              </span>
+                            ) : (
+                              <span className="text-red-400">✗</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 text-right text-gray-500">
+                            {formatTime(t.time)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -373,12 +435,10 @@ export default function OutputPanel({
                             )}
                           </td>
                           <td className="px-2 py-1 text-right text-gray-400">
-                            {t.time !== undefined ? `${t.time}ms` : "—"}
+                            {formatTime(t.time)}
                           </td>
                           <td className="px-2 py-1 text-right text-gray-400">
-                            {t.maxMemory !== undefined
-                              ? `${(t.maxMemory / 1024).toFixed(0)}KB`
-                              : "—"}
+                            {formatMemory(t.maxMemory)}
                           </td>
                         </tr>
                       );

@@ -461,7 +461,29 @@ export class CSAcademySession {
             const tests = parsed.data?.tests || {};
             const count = Object.keys(tests).length;
             for (const [, tdata] of Object.entries(tests)) {
-              this.resultsCache[id].tests.push(tdata);
+              // Log the first test object so we can see the exact field names CSAcademy sends
+              if (this.resultsCache[id].tests.length === 0) {
+                console.log(this.tag(`First test object keys: ${JSON.stringify(Object.keys(tdata as object))}`));
+                console.log(this.tag(`First test object: ${JSON.stringify(tdata)}`));
+              }
+              // Normalize field name variants into what our UI expects
+              const t: any = { ...(tdata as object) };
+              // time: CSAcademy may use execTime (ms) or time
+              if (t.time === undefined) {
+                if (t.execTime !== undefined) t.time = t.execTime;
+                else if (t.runningTime !== undefined) t.time = t.runningTime;
+                else if (t.executionTime !== undefined) t.time = t.executionTime;
+              }
+              // maxMemory: CSAcademy may use memory (bytes) or maxMemory (bytes)
+              if (t.maxMemory === undefined) {
+                if (t.memory !== undefined) t.maxMemory = t.memory;
+                else if (t.memUsage !== undefined) t.maxMemory = t.memUsage;
+              }
+              // checkerScore: may appear as score (0-1 range) without checker prefix
+              if (t.checkerScore === undefined && t.score !== undefined) {
+                t.checkerScore = t.score;
+              }
+              this.resultsCache[id].tests.push(t);
             }
             console.log(this.tag(`+${count} test results for job ${id} (total: ${this.resultsCache[id].tests.length})`));
           } else if (parsed.type === "finished" || parsed.type === "done") {
@@ -639,6 +661,91 @@ export class CSAcademySession {
     return result;
   }
 
+  // ── Submit job (non-blocking) — returns evalJobId immediately ──
+
+  async submitJobStart(
+    contestTaskId: number,
+    sourceCode: string,
+    referer: string,
+    programmingLanguageId = "1"
+  ): Promise<string> {
+    await this.ensureLoggedIn();
+    await this.ensureWsConnected();
+
+    if (!this.workspaceId) {
+      throw new Error("No workspaceId — login may have failed silently");
+    }
+    console.log(this.tag(`SUBMIT_START contestTaskId=${contestTaskId} wsId=${this.workspaceId}`));
+
+    const form = new URLSearchParams({
+      workspaceId: this.workspaceId,
+      sessionId: this.sessionId,
+      contestTaskId: String(contestTaskId),
+      sourceCode,
+      programmingLanguageId,
+    });
+
+    const res = await fetchRetry(
+      "https://csacademy.com/eval/submit_evaljob/",
+      {
+        method: "POST",
+        headers: { ...this.baseHeaders(), referer, "content-type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      },
+      { label: this.tag("POST evaljob (stream)"), retries: 3 }
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Submit failed (${res.status}): ${text}`);
+    }
+
+    const data = await res.json();
+    console.log(this.tag(`evaljob stream response: ${JSON.stringify(data)}`));
+    if (data.error) {
+      throw new Error(`CSAcademy submit error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+
+    const jobId = String(data.evalJobId);
+    if (!this.resultsCache[jobId]) {
+      this.resultsCache[jobId] = { tests: [], status: "pending" };
+    }
+    return jobId;
+  }
+
+  // ── Peek at live state of a running job ─────────────────────
+
+  peekJob(id: string): { tests: any[]; done: boolean; score: number | null } | null {
+    const entry = this.resultsCache[id];
+    if (!entry) return null;
+
+    const done = entry.status === "done";
+    const tests = [...(entry.tests || [])];
+
+    if (!done) return { tests, done: false, score: null };
+
+    // Normalize score 0.0-1.0 → 0-100 on first read after completion
+    if (!entry._scoreNormalized) {
+      if (typeof entry.score === "number") {
+        entry.score = entry.score * 100;
+      } else if (tests.length > 0) {
+        const sum = tests.reduce((s: number, t: any) => s + (t.checkerScore || 0), 0);
+        entry.score = (sum / tests.length) * 100;
+      } else {
+        entry.score = null;
+      }
+      entry._scoreNormalized = true;
+    }
+
+    return { tests, done: true, score: entry.score ?? null };
+  }
+
+  // ── Release a job from the cache ────────────────────────────
+
+  releaseJob(id: string): void {
+    delete this.resultsCache[id];
+  }
+
   // ── Poll cache ──────────────────────────────────────────────
 
   private pollCache(id: string | number, timeoutMs: number): Promise<any> {
@@ -722,6 +829,28 @@ class CSAcademyManager {
   ) {
     const sess = this.getOrCreate(csaEmail, csaPassword);
     return sess.submitCode(contestTaskId, sourceCode, referer, langId);
+  }
+
+  async submitJobStart(
+    csaEmail: string,
+    csaPassword: string,
+    contestTaskId: number,
+    sourceCode: string,
+    referer: string,
+    langId = "1"
+  ): Promise<string> {
+    const sess = this.getOrCreate(csaEmail, csaPassword);
+    return sess.submitJobStart(contestTaskId, sourceCode, referer, langId);
+  }
+
+  peekJob(csaEmail: string, jobId: string) {
+    const sess = this.sessions.get(csaEmail);
+    return sess?.peekJob(jobId) ?? null;
+  }
+
+  releaseJob(csaEmail: string, jobId: string) {
+    const sess = this.sessions.get(csaEmail);
+    sess?.releaseJob(jobId);
   }
 }
 

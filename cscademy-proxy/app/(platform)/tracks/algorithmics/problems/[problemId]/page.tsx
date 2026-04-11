@@ -127,6 +127,10 @@ export default function AlgorithmicsProblemIDEPage() {
   >(null);
   const [now, setNow] = useState(() => Date.now());
 
+  const [descWidth, setDescWidth] = useState(320);
+  const [outputWidth, setOutputWidth] = useState(320);
+  const [inputHeight, setInputHeight] = useState(140);
+
   const socketRef = useRef<WebSocket | null>(null);
   const offlineStartedRef = useRef(false);
   const probeRetryTimeoutRef = useRef<number | null>(null);
@@ -135,6 +139,12 @@ export default function AlgorithmicsProblemIDEPage() {
   const probeTriggeredRef = useRef(false);
   const codeDraftsRef = useRef<Record<string, string>>({});
   const inputSeedKeyRef = useRef("");
+  const dragRef = useRef<{
+    which: "desc" | "output" | "input";
+    startX: number;
+    startY: number;
+    startVal: number;
+  } | null>(null);
 
   const clearProbeRequest = useCallback(() => {
     if (probeRetryTimeoutRef.current !== null) {
@@ -147,6 +157,28 @@ export default function AlgorithmicsProblemIDEPage() {
       probeImageRef.current.onerror = null;
       probeImageRef.current = null;
     }
+  }, []);
+
+  // Drag-to-resize panel listeners (attached once, driven by dragRef)
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      if (drag.which === "desc") {
+        setDescWidth(Math.max(160, Math.min(600, drag.startVal + e.clientX - drag.startX)));
+      } else if (drag.which === "output") {
+        setOutputWidth(Math.max(160, Math.min(600, drag.startVal - (e.clientX - drag.startX))));
+      } else {
+        setInputHeight(Math.max(60, Math.min(400, drag.startVal - (e.clientY - drag.startY))));
+      }
+    };
+    const onUp = () => { dragRef.current = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
   }, []);
 
   useEffect(() => {
@@ -427,8 +459,10 @@ export default function AlgorithmicsProblemIDEPage() {
     };
   }, [clearProbeRequest, problemState, reportProbeHit]);
 
-  const runCode = useCallback(async () => {
+  const runCode = useCallback(async (inputOverride?: string) => {
     if (!problem) return;
+    const runInput = inputOverride !== undefined ? inputOverride : input;
+    if (inputOverride !== undefined) setInput(inputOverride);
     setIsRunning(true);
     setOutput("");
     setTestResults(null);
@@ -443,7 +477,7 @@ export default function AlgorithmicsProblemIDEPage() {
           trackSlug: trackId,
           problemSlug: problemId,
           sourceCode: code,
-          input,
+          input: runInput,
           programmingLanguageId: langId,
         }),
       });
@@ -460,7 +494,11 @@ export default function AlgorithmicsProblemIDEPage() {
         } else {
           const stdout = results.stdout || "";
           const stderr = results.stderr || "";
-          setOutput(stdout + (stderr ? "\n--- stderr ---\n" + stderr : ""));
+          const stats: string[] = [];
+          if (typeof results.time === "number") stats.push(`${results.time}ms`);
+          if (typeof results.maxMemory === "number") stats.push(`${Math.round(results.maxMemory / 1024)} KB`);
+          const footer = stats.length > 0 ? `\n\n⏱ ${stats.join(" · ")}` : "";
+          setOutput((stdout || "(no output)") + (stderr ? "\n--- stderr ---\n" + stderr : "") + footer);
           setIsError(!!stderr && !stdout);
         }
       }
@@ -476,12 +514,12 @@ export default function AlgorithmicsProblemIDEPage() {
     if (!problem) return;
     setIsSubmitting(true);
     setOutput("");
-    setTestResults(null);
+    setTestResults([]);
     setIsError(false);
     setScore(null);
 
     try {
-      const res = await fetch(track.submitEndpoint, {
+      const res = await fetch("/api/evaluation/submit-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -492,32 +530,64 @@ export default function AlgorithmicsProblemIDEPage() {
         }),
       });
 
-      const data = await res.json();
-      if (data.error) {
-        setOutput(data.error);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Submission failed" }));
+        setOutput(errData.error || "Submission failed");
         setIsError(true);
-      } else if (data.results) {
-        const results = data.results;
-        const sc =
-          results.score !== undefined && results.score !== null
-            ? results.score
-            : null;
-        setScore(sc);
+        setIsSubmitting(false);
+        return;
+      }
 
-        if (results.tests && Array.isArray(results.tests)) {
-          setTestResults(results.tests);
-        }
+      const reader = res.body?.getReader();
+      if (!reader) {
+        setOutput("No response stream from server");
+        setIsError(true);
+        setIsSubmitting(false);
+        return;
+      }
 
-        const lines: string[] = [];
-        if (sc !== null) lines.push(`Score: ${formatScore(sc)}/${problem.points}`);
-        if (results.tests && Array.isArray(results.tests)) {
-          const passed = results.tests.filter((t: any) => t.checkerScore === 1).length;
-          lines.push(`Tests: ${passed}/${results.tests.length} passed`);
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const accumulated: any[] = [];
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const msg = JSON.parse(line.slice(6));
+            if (msg.type === "test") {
+              accumulated.push(msg.test);
+              setTestResults([...accumulated]);
+            } else if (msg.type === "done") {
+              const sc = msg.score !== null && msg.score !== undefined ? msg.score : null;
+              setScore(sc);
+              const passed = accumulated.filter((t: any) => t.checkerScore === 1).length;
+              const summary: string[] = [];
+              if (sc !== null) summary.push(`Score: ${formatScore(sc)}/${problem.points}`);
+              summary.push(`Tests: ${passed}/${accumulated.length} passed`);
+              setOutput(summary.join("\n") || "Submitted successfully");
+              setIsSubmitting(false);
+              break outer;
+            } else if (msg.type === "error") {
+              setOutput(msg.message || "Evaluation failed");
+              setIsError(true);
+              setIsSubmitting(false);
+              break outer;
+            }
+          } catch {
+            // Ignore malformed SSE line
+          }
         }
-        setOutput(lines.join("\n") || "Submitted successfully");
       }
     } catch (err: any) {
-      setOutput(err.message);
+      setOutput(err.message || "Submission failed");
       setIsError(true);
     } finally {
       setIsSubmitting(false);
@@ -823,12 +893,22 @@ export default function AlgorithmicsProblemIDEPage() {
             ))}
           </select>
           <button
-            onClick={runCode}
+            onClick={() => runCode()}
             disabled={isRunning || isSubmitting}
             className="px-4 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-white rounded-lg transition-colors"
           >
             {isRunning ? "Running..." : "Run ▶"}
           </button>
+          {problem.sampleInput && (
+            <button
+              onClick={() => runCode(problem.sampleInput || "")}
+              disabled={isRunning || isSubmitting}
+              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 text-gray-300 rounded-lg transition-colors"
+              title="Load sample input and run"
+            >
+              ▶ Sample
+            </button>
+          )}
           <button
             onClick={submitCode}
             disabled={isRunning || isSubmitting}
@@ -871,7 +951,11 @@ export default function AlgorithmicsProblemIDEPage() {
       ) : (
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-80 border-r border-gray-800 overflow-auto p-4">
+        {/* ── Description panel (resizable) ── */}
+        <div
+          style={{ width: descWidth, minWidth: 160 }}
+          className="border-r border-gray-800 overflow-auto p-4 flex-shrink-0"
+        >
           <h2 className="text-lg font-semibold text-white mb-3">
             {problem.name}
           </h2>
@@ -903,7 +987,17 @@ export default function AlgorithmicsProblemIDEPage() {
           )}
         </div>
 
-        <div className="flex-1 flex flex-col">
+        {/* ── Drag handle: desc ↔ editor ── */}
+        <div
+          className="w-1 cursor-col-resize bg-gray-800 hover:bg-blue-500 active:bg-blue-500 transition-colors flex-shrink-0"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            dragRef.current = { which: "desc", startX: e.clientX, startY: e.clientY, startVal: descWidth };
+          }}
+        />
+
+        {/* ── Editor + Input (flex-1) ── */}
+        <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 overflow-hidden">
             <CodeEditor
               value={code}
@@ -912,22 +1006,58 @@ export default function AlgorithmicsProblemIDEPage() {
             />
           </div>
 
-          <div className="h-28 border-t border-gray-800">
-            <div className="px-3 py-1 border-b border-gray-800">
+          {/* ── Drag handle: editor ↔ input ── */}
+          <div
+            className="h-1 cursor-row-resize bg-gray-800 hover:bg-blue-500 active:bg-blue-500 transition-colors flex-shrink-0"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              dragRef.current = { which: "input", startX: e.clientX, startY: e.clientY, startVal: inputHeight };
+            }}
+          />
+
+          {/* ── Input panel (resizable height) ── */}
+          <div
+            style={{ height: inputHeight }}
+            className="border-t border-gray-800 flex flex-col flex-shrink-0"
+          >
+            <div className="px-3 py-1 border-b border-gray-800 flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                 Input
               </span>
+              {problem.sampleInput && (
+                <button
+                  type="button"
+                  onClick={() => setInput(problem.sampleInput || "")}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  title="Restore sample input"
+                >
+                  ↺ Load Sample
+                </button>
+              )}
             </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="w-full h-[calc(100%-28px)] bg-[#1e1e2e] text-gray-200 font-mono text-sm p-2 resize-none focus:outline-none"
+              className="flex-1 bg-[#1e1e2e] text-gray-200 font-mono text-sm p-2 resize-none focus:outline-none"
               placeholder="Custom input..."
             />
           </div>
         </div>
 
-        <div className="w-80 border-l border-gray-800 flex flex-col">
+        {/* ── Drag handle: editor ↔ output ── */}
+        <div
+          className="w-1 cursor-col-resize bg-gray-800 hover:bg-blue-500 active:bg-blue-500 transition-colors flex-shrink-0"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            dragRef.current = { which: "output", startX: e.clientX, startY: e.clientY, startVal: outputWidth };
+          }}
+        />
+
+        {/* ── Output panel (resizable) ── */}
+        <div
+          style={{ width: outputWidth, minWidth: 160 }}
+          className="border-l border-gray-800 flex flex-col flex-shrink-0"
+        >
           <OutputPanel
             output={output}
             isError={isError}
