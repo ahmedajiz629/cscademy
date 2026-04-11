@@ -54,8 +54,25 @@ export async function POST(req: NextRequest) {
   }
 
   const sessionId = randomUUID();
-  const forwardedProto = req.headers.get("x-forwarded-proto") ?? undefined;
-  const gatewayUrl = resolveOfflineGatewayUrl(req.nextUrl, forwardedProto);
+  const browserFacingUrl =
+    req.headers.get("origin")?.trim() || req.headers.get("referer")?.trim();
+
+  let gatewaySource: string | URL = browserFacingUrl || req.nextUrl;
+  let forwardedProto: string | undefined;
+
+  if (!browserFacingUrl) {
+    const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const host = req.headers.get("host")?.trim();
+    forwardedProto = req.headers.get("x-forwarded-proto") ?? undefined;
+
+    if (forwardedHost || host) {
+      const sourceUrl = new URL(req.nextUrl.toString());
+      sourceUrl.host = forwardedHost || host || sourceUrl.host;
+      gatewaySource = sourceUrl;
+    }
+  }
+
+  const gatewayUrl = resolveOfflineGatewayUrl(gatewaySource, forwardedProto);
 
   await convex.mutation(
     api.offlineProblemSessions.prepareEntry,
