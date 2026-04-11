@@ -18,6 +18,7 @@ import {
   type MainProjectCustomTextFieldValue,
   type MainProjectUploadFieldKey,
 } from "@/lib/main-project";
+import MarkdownContent from "@/components/MarkdownContent";
 import { formatScore } from "@/lib/score-format";
 import track from "@/lib/tracks/main-project";
 
@@ -756,9 +757,10 @@ export default function MainProjectProblemPage() {
                 Main Project Depot
               </p>
               <h1 className="text-3xl font-bold text-white">{problem.name}</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-gray-300">
-                {problem.description}
-              </p>
+              <MarkdownContent
+                className="mt-3 max-w-2xl"
+                content={problem.description}
+              />
             </div>
             <div className="min-w-[220px] rounded-2xl border border-cyan-400/25 bg-cyan-400/10 p-4">
               <p className="text-xs uppercase tracking-wide text-cyan-200">
