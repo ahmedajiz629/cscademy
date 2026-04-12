@@ -7,6 +7,7 @@ import {
   requireSelfOrAdminOrService,
   requireService,
 } from "./auth";
+import { normalizeOfflineGatewayUrl } from "../lib/offline-gateway";
 
 const SALT_ROUNDS = 10;
 
@@ -34,6 +35,15 @@ function resolvePasswordHash(args: {
   }
 
   throw new Error("Password is required");
+}
+
+function resolveOfflineGatewayUrlValue(rawValue?: string) {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return normalizeOfflineGatewayUrl(trimmed);
 }
 
 export const viewer = query({
@@ -86,6 +96,7 @@ export const create = mutation({
     passwordHash: v.optional(v.string()),
     role: v.union(v.literal("admin"), v.literal("student")),
     comment: v.optional(v.string()),
+    offlineGatewayUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAdminOrService(ctx);
@@ -102,6 +113,7 @@ export const create = mutation({
       passwordHash: resolvePasswordHash(args),
       role: args.role,
       comment: args.comment,
+      offlineGatewayUrl: resolveOfflineGatewayUrlValue(args.offlineGatewayUrl),
       isActive: true,
       createdAt: Date.now(),
     });
@@ -118,6 +130,7 @@ export const update = mutation({
     role: v.optional(v.union(v.literal("admin"), v.literal("student"))),
     isActive: v.optional(v.boolean()),
     comment: v.optional(v.string()),
+    offlineGatewayUrl: v.optional(v.string()),
   },
   handler: async (ctx, { id, password, passwordHash, ...fields }) => {
     await requireAdminOrService(ctx);
@@ -127,6 +140,10 @@ export const update = mutation({
       if (value !== undefined) {
         clean[key] = value;
       }
+    }
+
+    if (fields.offlineGatewayUrl !== undefined) {
+      clean.offlineGatewayUrl = resolveOfflineGatewayUrlValue(fields.offlineGatewayUrl);
     }
 
     if (password?.trim() || passwordHash?.trim()) {

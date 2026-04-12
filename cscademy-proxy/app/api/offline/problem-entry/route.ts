@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import {
   createOfflineGatewayToken,
+  normalizeOfflineGatewayUrl,
   resolveOfflineGatewayUrl,
 } from "@/lib/offline-gateway";
 import { getRuntimeProblemAccess } from "@/lib/offline-problem-access";
@@ -26,7 +27,10 @@ export async function POST(req: NextRequest) {
 
   const userId = auth.userId as Id<"users">;
   const convex = await getConvexServiceClient("offline-problem-entry");
-  const access = await getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug);
+  const [access, user] = await Promise.all([
+    getRuntimeProblemAccess(convex, userId, trackSlug, problemSlug),
+    convex.query(api.users.getById, { id: userId }),
+  ]);
 
   if (!access.problem) {
     return NextResponse.json({ error: "Problem not found" }, { status: 404 });
@@ -72,7 +76,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const gatewayUrl = resolveOfflineGatewayUrl(gatewaySource, forwardedProto);
+  const gatewayUrl = user?.offlineGatewayUrl
+    ? normalizeOfflineGatewayUrl(user.offlineGatewayUrl)
+    : resolveOfflineGatewayUrl(gatewaySource, forwardedProto);
 
   await convex.mutation(
     api.offlineProblemSessions.prepareEntry,

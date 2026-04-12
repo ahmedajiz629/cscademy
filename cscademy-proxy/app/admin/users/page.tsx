@@ -14,6 +14,7 @@ interface UserForm {
   email: string;
   password: string;
   role: "admin" | "student";
+  offlineGatewayUrl: string;
   csaEmail: string;
   csaPassword: string;
 }
@@ -23,6 +24,7 @@ const emptyForm: UserForm = {
   email: "",
   password: "",
   role: "student",
+  offlineGatewayUrl: "",
   csaEmail: "",
   csaPassword: "",
 };
@@ -115,6 +117,7 @@ export default function AdminUsersPage() {
       email: user.email,
       password: "",
       role: user.role,
+      offlineGatewayUrl: user.offlineGatewayUrl ?? "",
       csaEmail: "",
       csaPassword: "",
     });
@@ -153,6 +156,7 @@ export default function AdminUsersPage() {
           email: trimmedEmail,
           role: form.role,
           password: form.password || undefined,
+          offlineGatewayUrl: form.offlineGatewayUrl || undefined,
         });
       } else {
         if (!form.password) {
@@ -166,6 +170,7 @@ export default function AdminUsersPage() {
           email: trimmedEmail,
           password: form.password,
           role: form.role,
+          offlineGatewayUrl: form.offlineGatewayUrl || undefined,
         });
       }
 
@@ -332,6 +337,22 @@ export default function AdminUsersPage() {
                   <option value="student">Student</option>
                   <option value="admin">Admin</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">
+                  Offline Gateway URL
+                </label>
+                <input
+                  value={form.offlineGatewayUrl}
+                  onChange={(e) =>
+                    setForm({ ...form, offlineGatewayUrl: e.target.value })
+                  }
+                  placeholder="ws://gateway-host:8787 or https://gateway-host:8787"
+                  className="w-full px-3 py-2 bg-[#1a1a2e] border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  When set, offline tasks will connect to this gateway instead of inferring it from the current page URL.
+                </p>
               </div>
 
               <div className="pt-3 border-t border-gray-800">
