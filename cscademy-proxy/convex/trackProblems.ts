@@ -725,54 +725,17 @@ export const listByTrack = query({
       .withIndex("by_trackSlug", (q) => q.eq("trackSlug", trackSlug))
       .collect();
 
-    const identity = await getConvexIdentity(ctx);
-    const offlineSessionSlugs = new Set<string>();
-    const viewerUserId = identity?.userId;
-
-    if (
-      identity?.role !== "admin" &&
-      identity?.role !== "service" &&
-      viewerUserId !== undefined
-    ) {
-      const requiredViewerUserId: Id<"users"> = viewerUserId;
-
-      const sessions = await ctx.db
-        .query("offlineProblemSessions")
-        .withIndex("by_user_track", (q) =>
-          q.eq("userId", requiredViewerUserId).eq("trackSlug", trackSlug)
-        )
-        .collect();
-
-      for (const session of sessions) {
-        offlineSessionSlugs.add(session.problemSlug);
-      }
-    }
-
-    const visibleProblems = problems.filter((problem) => {
-      if (problem.isActive === false) {
-        return false;
-      }
-
-      if (problem.isOffline !== true) {
-        return true;
-      }
-
-      if (identity?.role === "admin" || identity?.role === "service") {
-        return true;
-      }
-
-      if (!identity?.userId) {
-        return false;
-      }
-
-      return offlineSessionSlugs.has(problem.slug);
-    });
-
-    const mergedProblems = await Promise.all(
-      visibleProblems.map((problem) => mergeProblemWithConfig(ctx, problem))
-    );
-
-    return mergedProblems.sort((left, right) => left.order - right.order);
+    return problems
+      .filter((problem) => problem.isActive !== false)
+      .sort((left, right) => left.order - right.order)
+      .map((problem) => ({
+        trackSlug: problem.trackSlug,
+        slug: problem.slug,
+        name: problem.name,
+        points: problem.points,
+        order: problem.order,
+        isOffline: problem.isOffline === true,
+      }));
   },
 });
 
@@ -841,19 +804,17 @@ export const getBySlug = query({
       const identity = await getConvexIdentity(ctx);
 
       if (identity?.role !== "admin" && identity?.role !== "service") {
-        const viewerUserId = identity?.userId;
-
-        if (viewerUserId === undefined) {
+        if (!identity || identity.userId === undefined) {
           return null;
         }
 
-        const requiredViewerUserId: Id<"users"> = viewerUserId;
+        const viewerUserId = identity.userId as Id<"users">;
 
         const session = await ctx.db
           .query("offlineProblemSessions")
           .withIndex("by_user_problem", (q) =>
             q
-              .eq("userId", requiredViewerUserId)
+              .eq("userId", viewerUserId)
               .eq("trackSlug", trackSlug)
               .eq("problemSlug", slug)
           )
